@@ -124,4 +124,4 @@ DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 
 LINE_CLIENT_ID = '2001460355'
 LINE_CLIENT_SECRET = '87449c0424dbac38b32868ff2f27f8db'
-LINE_REDIRECT_URI = 'https://localhost:5003/auth/line/callback/' #https://learn.residemy.org/auth/line/callback/
+LINE_REDIRECT_URI = 'https://learn.residemy.org/auth/line/callback/' #https://learn.residemy.org/auth/line/callback/ https://localhost:5003/auth/line/callback/
