@@ -22,4 +22,5 @@ urlpatterns = [
     path("admin/", admin.site.urls),
     path('', views.index, name='index'),
     path('', include('django_nextjs.urls')),
+    path('store_line_user', views.store_line_user, name='store_line_user'),
 ]
