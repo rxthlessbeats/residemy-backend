@@ -1,11 +1,11 @@
 # views.py
 from django.conf import settings
-# from django.contrib.auth import login
-# from django.shortcuts import redirect
 from django_nextjs.render import render_nextjs_page_sync
-# import requests
 from django.http import JsonResponse
 from neo4j import GraphDatabase
+from rest_framework_simplejwt.tokens import AccessToken
+from rest_framework.decorators import api_view
+from rest_framework.response import Response
 
 def index(request):
     return render_nextjs_page_sync(request)
@@ -16,7 +16,7 @@ import json
 @csrf_exempt
 def store_line_user(request):
     # Parse request data
-    user_data = request.GET 
+    # user_data = request.GET 
 
     user_data = json.loads(request.body)
     print(user_data)
