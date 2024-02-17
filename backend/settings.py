@@ -169,7 +169,7 @@ CMS_CONFIRM_VERSION4 = True
 CORS_ALLOW_ALL_ORIGINS = True
 CORS_ORIGIN_WHITELIST = [
      'http://localhost:5003',
-     'https://residemy.com',
+     'https://learn.residemy.org',
 ]
 
 # Static files (CSS, JavaScript, Images)
