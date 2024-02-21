@@ -1,2 +1,7 @@
 media/forum/
+
 db.sqlite3
+
+backend/__pycache__
+
+backend/migrations
