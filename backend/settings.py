@@ -26,9 +26,6 @@ SECRET_KEY = f"django-insecure-7z@6uoeyp-rt=ipk!ka&ixg&p-7ticsx3sc@!q8^p_g%gl#gm
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = True
 
-ALLOWED_HOSTS = []
-
-
 # Application definition
 
 INSTALLED_APPS = [
@@ -172,7 +169,7 @@ CORS_ORIGIN_WHITELIST = [
      'https://learn.residemy.org',
 ]
 
-ALLOWED_HOSTS = ['https://140.114.134.26']
+ALLOWED_HOSTS = ['https://140.114.134.26', 'https://learn.residemy.org']
 
 # Static files (CSS, JavaScript, Images)
 # https://docs.djangoproject.com/en/4.2/howto/static-files/
