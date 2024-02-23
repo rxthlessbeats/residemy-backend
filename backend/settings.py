@@ -179,9 +179,6 @@ CSRF_TRUSTED_ORIGINS = ['https://learn.residemy.org']
 STATIC_ROOT = os.path.join(BASE_DIR, 'static')
 STATIC_URL = "static/"
 
-SECURE_SSL_REDIRECT = True
-SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
-
 # Default primary key field type
 # https://docs.djangoproject.com/en/4.2/ref/settings/#default-auto-field
 
