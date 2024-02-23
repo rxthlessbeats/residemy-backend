@@ -22,7 +22,7 @@ from django.conf import settings
 from django.conf.urls.static import static
 
 urlpatterns = [
-    path("admin/", admin.site.urls),
+    path("dashboard/", admin.site.urls),
     # path('', include('django_nextjs.urls')),
     # path('', views.index, name='index'),
     path('api/store_line_user/', views.store_line_user, name='store_line_user'),
