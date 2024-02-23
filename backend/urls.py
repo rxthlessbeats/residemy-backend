@@ -34,6 +34,6 @@ urlpatterns = [
     # path('accounts/', include('accounts.urls')),  # Assuming the app is named 'accounts' and the file is 'urls.py'
     path('cms/', include('cms.urls')),  # Include Django CMS URLs
 
-] + static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)
+] + static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT) \
 + static(settings.STATIC_URL, document_root=settings.STATIC_ROOT)
 
