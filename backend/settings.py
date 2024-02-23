@@ -169,7 +169,9 @@ CORS_ORIGIN_WHITELIST = [
      'https://learn.residemy.org',
 ]
 
-ALLOWED_HOSTS = ['140.114.134.26', '127.0.0.1', 'learn.residemy.org']
+ALLOWED_HOSTS = ['140.114.134.26', '127.0.0.1', 'learn.residemy.org', '0.0.0.0']
+
+CSRF_TRUSTED_ORIGINS = ['https://learn.residemy.org']
 
 # Static files (CSS, JavaScript, Images)
 # https://docs.djangoproject.com/en/4.2/howto/static-files/
