@@ -167,17 +167,18 @@ CORS_ALLOW_ALL_ORIGINS = True
 CORS_ORIGIN_WHITELIST = [
      'http://localhost:5003',
      'https://learn.residemy.org',
+     'https://admin.learn.residemy.org',
 ]
 
-ALLOWED_HOSTS = ['140.114.134.26', '127.0.0.1', 'learn.residemy.org', '0.0.0.0']
+ALLOWED_HOSTS = ['140.114.134.26', '127.0.0.1', 'learn.residemy.org', '0.0.0.0', 'admin.learn.residemy.org']
 
-CSRF_TRUSTED_ORIGINS = ['https://learn.residemy.org']
+CSRF_TRUSTED_ORIGINS = ['https://learn.residemy.org', 'https://admin.learn.residemy.org']
 
 # Static files (CSS, JavaScript, Images)
 # https://docs.djangoproject.com/en/4.2/howto/static-files/
 
 STATIC_ROOT = os.path.join(BASE_DIR, 'static')
-STATIC_URL = "admin/static/"
+STATIC_URL = "static/"
 
 # Default primary key field type
 # https://docs.djangoproject.com/en/4.2/ref/settings/#default-auto-field
