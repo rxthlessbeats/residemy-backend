@@ -8,6 +8,9 @@ from rest_framework.decorators import api_view
 from rest_framework.response import Response
 import os
 from .models import Forum, ForumDocument
+import openai
+import textract
+openai.api_key = settings.OPENAI_API_KEY
 
 # def index(request):
 #     return render_nextjs_page_sync(request)
@@ -100,3 +103,37 @@ def forum_record_click(request):
         return JsonResponse({'status': 'success'})
 
     return JsonResponse({'status': 'error'}, status=400)
+
+@csrf_exempt
+def text_summarization(request):
+    if request.method == 'POST':
+        # Check if the request has a file in it
+        if 'document' in request.FILES:
+            document = request.FILES['document']
+            # Assuming the document is a PDF or a TXT file
+            text_to_summarize = textract.process(document.temporary_file_path()).decode('utf-8')
+        else:
+            # Load JSON data from request body if no file is present
+            print("Received request body:", request.body)
+            data = json.loads(request.body)
+            text_to_summarize = data.get('text', None)
+
+        if not text_to_summarize:
+            return JsonResponse({'error': 'No text provided for summarization.'}, status=400)
+        
+        # Use OpenAI API to summarize the text
+        response = openai.ChatCompletion.create(
+            model="gpt-4-turbo",  # Ensure this is the correct model you have access to
+            messages=[
+                {"role": "system", "content": "You are a helpful assistant."},
+                {"role": "user", "content": f"Summarize the following text: {text_to_summarize}"}
+            ]
+        )
+        
+        # Extract the summary from the response
+        summary = response['choices'][0]['message']['content']
+        
+        # Return the summary in a JsonResponse
+        return JsonResponse({'summary': summary})
+    
+    return JsonResponse({'error': 'This endpoint only supports POST requests.'}, status=405)

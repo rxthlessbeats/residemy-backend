@@ -30,6 +30,7 @@ urlpatterns = [
     path('api/forums/<uuid:forum_id>/documents/', views.forum_documents, name='forum_documents'),
     path('api/record-click', views.record_click, name='record_click'),
     path('api/forum-record-click', views.forum_record_click, name='forum_record_click'),
+    path('api/text_summarization/', views.text_summarization, names='text_summarization'),
 
     # path('accounts/', include('accounts.urls')),  # Assuming the app is named 'accounts' and the file is 'urls.py'
     path('cms/', include('cms.urls')),  # Include Django CMS URLs
