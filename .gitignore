@@ -5,3 +5,5 @@ media/forum/
 backend/__pycache__
 
 backend/migrations
+
+.env*.local
