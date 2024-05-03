@@ -166,6 +166,7 @@ CMS_CONFIRM_VERSION4 = True
 CORS_ALLOW_ALL_ORIGINS = True
 CORS_ORIGIN_WHITELIST = [
      'http://localhost:5003',
+     'http://192.168.50.26:5003',
      'https://learn.residemy.org',
      'https://admin.learn.residemy.org',
 ]
