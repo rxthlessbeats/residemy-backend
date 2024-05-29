@@ -1,10 +1,23 @@
-from cms.models.pluginmodel import CMSPlugin
 from django.conf import settings
 from django.db import models
+from django.contrib.auth.models import AbstractUser, Group, Permission
 from django.core.validators import FileExtensionValidator
-from django.core.files.base import ContentFile
-import fitz
 import uuid
+from django.utils import timezone
+
+class User(AbstractUser):
+    line_user_id = models.CharField(max_length=255, unique=True, null=False, blank=False)
+    profile_picture = models.URLField(max_length=200, blank=True, null=True)
+    display_name = models.CharField(max_length=255, blank=True, null=True)
+    status_message = models.CharField(max_length=255, blank=True, null=True)
+    email = models.EmailField(max_length=255, blank=True, null=True)
+    date_joined = models.DateTimeField(default=timezone.now)
+    
+    groups = models.ManyToManyField(Group, related_name='custom_user_set')
+    user_permissions = models.ManyToManyField(Permission, related_name='custom_user_set_permissions')
+
+    def __str__(self):
+        return self.line_user_id
 
 ###FOR FORUM FILES###
 
@@ -46,16 +59,20 @@ class ForumDocument(models.Model):
             super().save(*args, **kwargs)  # Save again to save the snapshot field
 
     def generate_pdf_snapshot(self):
+        import fitz 
+        from django.core.files.base import ContentFile
         doc = fitz.open(self.document.path)
-        page = doc.load_page(0)  # first page
+        page = doc.load_page(0)
         pix = page.get_pixmap()
-        img_bytes = pix.tobytes("png")  # Get PNG bytes
-        img_content_file = ContentFile(img_bytes, name='temp.png')  # Create a ContentFile
+        img_bytes = pix.tobytes("png")  
+        img_content_file = ContentFile(img_bytes, name='temp.png')  
         self.snapshot.save(f"{self.title}_snapshot.png", img_content_file, save=True)
         doc.close()
 
 def forum_directory_path(instance, filename):
     return 'forum/logos/{0}/{1}'.format(instance.folderId, filename)
+
+from cms.models.pluginmodel import CMSPlugin
 
 class Forum(CMSPlugin):
     folderId = models.CharField(max_length=36, default=generate_forum_uuid, primary_key=True, editable=False)
@@ -83,5 +100,13 @@ class ForumPluginModel(CMSPlugin):
 
     def __str__(self):
         return self.forum.title
-    
 
+# from django.contrib.auth.models import User
+
+# class UserFile(models.Model):
+#     user = models.ForeignKey(User, related_name='files', on_delete=models.CASCADE)
+#     uploaded_file = models.FileField(upload_to='user_files/%Y/%m/%d/')
+#     uploaded_at = models.DateTimeField(auto_now_add=True)
+
+#     def __str__(self):
+#         return f"File {self.uploaded_file.name} uploaded by {self.user.username}"

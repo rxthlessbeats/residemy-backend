@@ -1,45 +1,94 @@
 # views.py
-from django.conf import settings
-# from django_nextjs.render import render_nextjs_page_sync
-from django.http import JsonResponse
-from neo4j import GraphDatabase
-from rest_framework_simplejwt.tokens import AccessToken
-from rest_framework.decorators import api_view
-from rest_framework.response import Response
+import requests
+from django.shortcuts import redirect, render
+from django.contrib.auth import login
+from .models import User
+from django.http import JsonResponse, HttpResponseRedirect
 import os
 from .models import Forum, ForumDocument
 import openai
 import textract
-openai.api_key = settings.OPENAI_API_KEY
-
-# def index(request):
-#     return render_nextjs_page_sync(request)
-
+from dotenv import load_dotenv
 from django.views.decorators.csrf import csrf_exempt
 import json
 
+load_dotenv(dotenv_path='.env.local', override=True)
+openai.api_key = os.getenv("OPENAI_API_KEY")
+LINE_CLIENT_ID = os.getenv("LINE_CLIENT_ID")
+LINE_CLIENT_SECRET = os.getenv("LINE_CLIENT_SECRET")
+LINE_REDIRECT_URI = os.getenv("BACKEND_URI") + "/api/line_callback"
+BASE_URI = os.getenv("BASE_URI")
+
+
+def line_login(request):
+    line_auth_url = (
+        f"https://access.line.me/oauth2/v2.1/authorize?response_type=code&client_id={LINE_CLIENT_ID}"
+        f"&redirect_uri={LINE_REDIRECT_URI}&bot_prompt=aggressive&state=login&scope=profile%20openid%20email"
+    )
+    return redirect(line_auth_url)
+
 @csrf_exempt
-def store_line_user(request):
-    # Parse request data
-    # user_data = request.GET 
+def line_callback(request):
+    code = request.GET.get('code')
+    data = {
+        'grant_type': 'authorization_code',
+        'code': code,
+        'redirect_uri': LINE_REDIRECT_URI,
+        'client_id': LINE_CLIENT_ID,
+        'client_secret': LINE_CLIENT_SECRET,
+    }
+    response = requests.post('https://api.line.me/oauth2/v2.1/token', data=data)
+    token_json = response.json()
 
-    user_data = json.loads(request.body)
-    print(user_data)
+    # fetch email
+    url = 'https://api.line.me/oauth2/v2.1/verify'
+    headers = {'Content-Type': 'application/x-www-form-urlencoded'}
+    data = {
+        'id_token': token_json['id_token'],
+        'client_id': LINE_CLIENT_ID,
+    }
+    response2 = requests.post(url, headers=headers, data=data)
+    user_info2 = response2.json()
+    # print(user_info2)
+    
+    # fetch status
+    user_info_url = 'https://api.line.me/v2/profile'
+    headers = {'Authorization': f'Bearer {token_json["access_token"]}'}
+    user_info_response = requests.get(user_info_url, headers=headers)
+    user_info = user_info_response.json()
 
-    # Connect to Neo4j
-    driver = GraphDatabase.driver("neo4j+ssc://51ebc70c.databases.neo4j.io", auth=('neo4j', 'F-gS2PQd_aVaEn7g5uS-fg-YFrBZ8GGc4eqS4GJatXU'))
+    email = None
+    status_message = None
+    
+    if 'email' in user_info2:
+        email = user_info2['email']
+    
+    if 'statusMessage' in user_info:
+        status_message = user_info['statusMessage']
+    
+    # Authenticate and log in the user
+    user, created = User.objects.get_or_create(line_user_id=user_info['userId'])
+    if created:
+        # user.username = user_info['userId']
+        user.display_name = user_info['displayName']
+        user.profile_picture = user_info['pictureUrl']
+        user.email = email
+        user.status_message = status_message
+        user.save()
+    else:
+        user.display_name = user_info['displayName']
+        user.profile_picture = user_info['pictureUrl']
+        user.email = email
+        user.status_message = status_message
+        user.save(update_fields=['display_name', 'profile_picture', 'email', 'status_message'])
 
-    def create_user(tx, user_id, display_name, picture_url, email):
-        tx.run("MERGE (u:User {userId: $user_id}) "
-               "SET u.displayName = $display_name, u.pictureUrl = $picture_url, u.email = $email",
-               user_id=user_id, display_name=display_name, picture_url=picture_url, email=email)
+    login(request, user)
 
-    # Write to Neo4j
-    with driver.session(database='neo4j') as session:
-        session.execute_write(create_user, user_data['userId'], user_data['displayName'], user_data['pictureUrl'], user_data['email'])
+    print(token_json['access_token'])
+    print(token_json['id_token'])
 
-    driver.close()
-    return JsonResponse({'status': 'success' ,'userId': user_data['userId']})
+    redirect_url = f"{BASE_URI}?access_token={token_json['access_token']}&id_token={token_json['id_token']}&user_id={user_info['userId']}"
+    return HttpResponseRedirect(redirect_url)
 
 def forum_list(request):
     forums = Forum.objects.all()
