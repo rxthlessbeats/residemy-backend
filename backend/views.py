@@ -7,6 +7,7 @@ from django.http import JsonResponse, HttpResponseRedirect
 import os
 from .models import Forum, ForumDocument
 import openai
+
 import textract
 from dotenv import load_dotenv
 from django.views.decorators.csrf import csrf_exempt
@@ -14,6 +15,7 @@ import json
 
 load_dotenv(dotenv_path='.env.local', override=True)
 openai.api_key = os.getenv("OPENAI_API_KEY")
+client = openai.OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 LINE_CLIENT_ID = os.getenv("LINE_CLIENT_ID")
 LINE_CLIENT_SECRET = os.getenv("LINE_CLIENT_SECRET")
 LINE_REDIRECT_URI = os.getenv("BACKEND_URI") + "/api/line_callback"
@@ -124,7 +126,7 @@ def forum_documents(request, forum_id):
         return JsonResponse(data, safe=False)
     except Forum.DoesNotExist:
         return JsonResponse({'error': 'Forum not found'}, status=404)
-    
+
 @csrf_exempt
 def record_click(request):
     if request.method == 'POST':
@@ -134,7 +136,7 @@ def record_click(request):
         ppt = ForumDocument.objects.get(id=ppt_id)
         ppt.click_count += 1
         ppt.save()
-        
+
         return JsonResponse({'status': 'success'})
 
     return JsonResponse({'status': 'error'}, status=400)
@@ -148,7 +150,7 @@ def forum_record_click(request):
         forum = Forum.objects.get(pk=forum_id)
         forum.click_count += 1
         forum.save()
-        
+
         return JsonResponse({'status': 'success'})
 
     return JsonResponse({'status': 'error'}, status=400)
@@ -169,20 +171,18 @@ def text_summarization(request):
 
         if not text_to_summarize:
             return JsonResponse({'error': 'No text provided for summarization.'}, status=400)
-        
+
         # Use OpenAI API to summarize the text
-        response = openai.ChatCompletion.create(
-            model="gpt-4-turbo",  # Ensure this is the correct model you have access to
-            messages=[
-                {"role": "system", "content": "You are a helpful assistant."},
-                {"role": "user", "content": f"Summarize the following text: {text_to_summarize}"}
-            ]
-        )
-        
+        response = client.chat.completions.create(model="gpt-4-turbo",  # Ensure this is the correct model you have access to
+        messages=[
+            {"role": "system", "content": "You are a helpful assistant."},
+            {"role": "user", "content": f"Summarize the following text: {text_to_summarize}"}
+        ])
+
         # Extract the summary from the response
-        summary = response['choices'][0]['message']['content']
-        
+        summary = response.choices[0].message.content
+
         # Return the summary in a JsonResponse
         return JsonResponse({'summary': summary})
-    
+
     return JsonResponse({'error': 'This endpoint only supports POST requests.'}, status=405)
