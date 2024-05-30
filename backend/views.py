@@ -1,96 +1,176 @@
 # views.py
-import requests
-from django.shortcuts import redirect, render
-from django.contrib.auth import login
-from .models import User
-from django.http import JsonResponse, HttpResponseRedirect
 import os
-from .models import Forum, ForumDocument
-import openai
-
-import textract
-from dotenv import load_dotenv
-from django.views.decorators.csrf import csrf_exempt
 import json
+import hashlib
+from dotenv import load_dotenv
+from .models import Forum, ForumDocument, User, Document
+
+from django.http import JsonResponse
+from django.shortcuts import get_object_or_404
+from django.views.decorators.csrf import csrf_exempt
+
+import openai
+import textract
+
 
 load_dotenv(dotenv_path='.env.local', override=True)
 openai.api_key = os.getenv("OPENAI_API_KEY")
 client = openai.OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
-LINE_CLIENT_ID = os.getenv("LINE_CLIENT_ID")
-LINE_CLIENT_SECRET = os.getenv("LINE_CLIENT_SECRET")
-LINE_REDIRECT_URI = os.getenv("BACKEND_URI") + "/api/line_callback"
-BASE_URI = os.getenv("BASE_URI")
 
-
-def line_login(request):
-    line_auth_url = (
-        f"https://access.line.me/oauth2/v2.1/authorize?response_type=code&client_id={LINE_CLIENT_ID}"
-        f"&redirect_uri={LINE_REDIRECT_URI}&bot_prompt=aggressive&state=login&scope=profile%20openid%20email"
-    )
-    return redirect(line_auth_url)
+###################
+# user table
 
 @csrf_exempt
-def line_callback(request):
-    code = request.GET.get('code')
-    data = {
-        'grant_type': 'authorization_code',
-        'code': code,
-        'redirect_uri': LINE_REDIRECT_URI,
-        'client_id': LINE_CLIENT_ID,
-        'client_secret': LINE_CLIENT_SECRET,
-    }
-    response = requests.post('https://api.line.me/oauth2/v2.1/token', data=data)
-    token_json = response.json()
+def update_user(request):
+    if request.method == 'POST':
+        data = json.loads(request.body)
+        line_user_id = data.get('user_id')
+        display_name = data.get('user_displayName')
+        profile_picture = data.get('user_pictureUrl')
+        email = data.get('user_email')
+        status_message = data.get('user_statusMessage')
+        access_token = data.get('access_token')
+        id_token = data.get('id_token')
+        gpt_photo_desc = data.get('gpt_photo_desc')
 
-    # fetch email
-    url = 'https://api.line.me/oauth2/v2.1/verify'
-    headers = {'Content-Type': 'application/x-www-form-urlencoded'}
-    data = {
-        'id_token': token_json['id_token'],
-        'client_id': LINE_CLIENT_ID,
-    }
-    response2 = requests.post(url, headers=headers, data=data)
-    user_info2 = response2.json()
-    # print(user_info2)
-    
-    # fetch status
-    user_info_url = 'https://api.line.me/v2/profile'
-    headers = {'Authorization': f'Bearer {token_json["access_token"]}'}
-    user_info_response = requests.get(user_info_url, headers=headers)
-    user_info = user_info_response.json()
+        user, created = User.objects.get_or_create(line_user_id=line_user_id)
+        gen_state = user.profile_picture != profile_picture or user.gpt_photo_desc == None
+        print('gen_state:', gen_state)
 
-    email = None
-    status_message = None
-    
-    if 'email' in user_info2:
-        email = user_info2['email']
-    
-    if 'statusMessage' in user_info:
-        status_message = user_info['statusMessage']
-    
-    # Authenticate and log in the user
-    user, created = User.objects.get_or_create(line_user_id=user_info['userId'])
-    if created:
-        # user.username = user_info['userId']
-        user.display_name = user_info['displayName']
-        user.profile_picture = user_info['pictureUrl']
+        user.display_name = display_name
+        user.profile_picture = profile_picture
         user.email = email
         user.status_message = status_message
+        user.access_token = access_token
+        user.id_token = id_token
+        if gen_state:  # Only update gpt_photo_desc if we need to generate a new description
+            user.gpt_photo_desc = gpt_photo_desc
         user.save()
-    else:
-        user.display_name = user_info['displayName']
-        user.profile_picture = user_info['pictureUrl']
-        user.email = email
-        user.status_message = status_message
-        user.save(update_fields=['display_name', 'profile_picture', 'email', 'status_message'])
 
-    login(request, user)
+        return JsonResponse({'status': 'success', 'gen_state': gen_state}, status=200)
+    return JsonResponse({'error': 'Invalid request'}, status=400)
 
-    print(token_json['access_token'])
-    print(token_json['id_token'])
+@csrf_exempt
+def get_user_data(request):
+    if request.method == 'POST':
+        data = json.loads(request.body)
+        user_id = data.get('user_id')
 
-    redirect_url = f"{BASE_URI}?access_token={token_json['access_token']}&id_token={token_json['id_token']}&user_id={user_info['userId']}"
-    return HttpResponseRedirect(redirect_url)
+        try:
+            user = User.objects.get(line_user_id=user_id)
+            user_data = {
+                "user_id": user.line_user_id,
+                "user_displayName": user.display_name,
+                "user_pictureUrl": user.profile_picture,
+                "user_statusMessage": user.status_message,
+                "user_email": user.email,
+                "access_token": user.access_token,
+                "id_token": user.id_token,
+                "gpt_photo_desc": user.gpt_photo_desc,
+                "user_level": user.user_level
+            }
+            return JsonResponse(user_data, status=200)
+        except User.DoesNotExist:
+            return JsonResponse({'error': 'User not found'}, status=404)
+
+    return JsonResponse({'error': 'Invalid request method'}, status=400)
+
+########################
+# document table
+
+def calculate_md5(file_data):
+    return hashlib.md5(file_data).hexdigest()
+
+@csrf_exempt
+def save_document(request):
+    if request.method == 'POST':
+        data = json.loads(request.body)
+        user_id = data.get('user_id')
+        doc_title = data.get('doc_title')
+        doc_desc = data.get('doc_desc')
+        doc_type = data.get('doc_type')
+        doc_md5 = data.get('doc_md5')
+        doc_loc = data.get('doc_loc')
+        doc_uri = data.get('doc_uri')
+        doc_text = data.get('doc_text')
+        display_date = data.get('display_date')
+        expire_date = data.get('expire_date')
+
+        user = get_object_or_404(User, line_user_id=user_id)
+
+        doc_id = hashlib.md5((user_id + doc_title).encode()).hexdigest()
+
+        document, created = Document.objects.get_or_create(doc_id=doc_id, defaults={
+            'user': user,
+            'doc_title': doc_title,
+            'doc_desc': doc_desc,
+            'doc_type': doc_type,
+            'doc_md5': doc_md5,
+            'doc_loc': doc_loc,
+            'doc_uri': doc_uri,
+            'doc_text': doc_text,
+            'display_date': display_date,
+            'expire_date': expire_date,
+        })
+
+        if not created:
+            document.doc_title = doc_title
+            document.doc_desc = doc_desc
+            document.doc_type = doc_type
+            document.doc_md5 = doc_md5
+            document.doc_loc = doc_loc
+            document.doc_uri = doc_uri
+            document.doc_text = doc_text
+            document.display_date = display_date
+            document.expire_date = expire_date
+            document.save()
+
+        return JsonResponse({'status': 'success', 'doc_id': document.doc_id}, status=200)
+    return JsonResponse({'error': 'Invalid request'}, status=400)
+
+@csrf_exempt
+def list_documents(request):
+    if request.method == 'POST':
+        data = json.loads(request.body)
+        user_id = data.get('user_id')
+
+        user = get_object_or_404(User, line_user_id=user_id)
+        documents = Document.objects.filter(user=user)
+
+        doc_list = []
+        for doc in documents:
+            doc_list.append({
+                'doc_id': doc.doc_id,
+                'doc_title': doc.doc_title,
+                'doc_desc': doc.doc_desc,
+                'doc_type': doc.doc_type,
+                'doc_md5': doc.doc_md5,
+                'doc_loc': doc.doc_loc,
+                'doc_uri': doc.doc_uri,
+                'doc_text': doc.doc_text,
+                'display_date': doc.display_date,
+                'expire_date': doc.expire_date,
+            })
+
+        return JsonResponse({'status': 'success', 'documents': doc_list}, status=200)
+    return JsonResponse({'error': 'Invalid request'}, status=400)
+
+@csrf_exempt
+def delete_document(request):
+    if request.method == 'POST':
+        data = json.loads(request.body)
+        doc_id = data.get('doc_id')
+        user_id = data.get('user_id')
+
+        user = get_object_or_404(User, line_user_id=user_id)
+        document = get_object_or_404(Document, doc_id=doc_id, user=user)
+
+        document.delete()
+
+        return JsonResponse({'status': 'success'}, status=200)
+    return JsonResponse({'error': 'Invalid request'}, status=400)
+
+#########################
 
 def forum_list(request):
     forums = Forum.objects.all()
