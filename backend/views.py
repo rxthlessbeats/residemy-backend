@@ -11,6 +11,7 @@ from .models import User, Document
 from django.http import JsonResponse
 from django.shortcuts import get_object_or_404
 from django.views.decorators.csrf import csrf_exempt
+from django.db.models import Q
 from .utils import generate_pdf_thumbnail, generate_text_thumbnail
 
 load_dotenv(dotenv_path='.env.local', override=True)
@@ -148,42 +149,64 @@ def upload_document(request):
 
 @csrf_exempt
 def list_documents(request):
-    def fetch_documents(user_id=None):
-        if user_id:
-            user = get_object_or_404(User, line_user_id=user_id)
-            documents = Document.objects.filter(user=user)
+    def fetch_documents(user_id=None, doc_id=None):
+        if doc_id:
+            document = get_object_or_404(Document, doc_id=doc_id)
+            doc_list = [{
+                "Document ID": document.doc_id,
+                "Document URI": document.doc_uri,
+                "Document Type": document.doc_type,
+                "Document Title": document.doc_title,
+                "Document Description": document.doc_desc,
+                "Document Text": document.doc_text,
+                "Document Create Date": document.doc_createdate,
+                "Document Revise Date": document.doc_revisedate,
+                "Display Date": document.display_date,
+                "Expire Date": document.expire_date,
+                "Share Flag": document.share_flag,
+                "Audit Flag": document.audit_flag,
+                "Document Meta": document.doc_meta,
+                "Document Location": document.doc_loc,
+                "Document MD5": document.doc_md5
+            }]
         else:
-            documents = Document.objects.all()
+            if user_id:
+                user = get_object_or_404(User, line_user_id=user_id)
+                documents = Document.objects.filter(user=user)
+            else:
+                documents = Document.objects.all()
 
-        doc_list = []
-        for doc in documents:
-            doc_list.append({
-                "Document ID": doc.doc_id,
-                "Document URI": doc.doc_uri,
-                "Document Type": doc.doc_type,
-                "Document Title": doc.doc_title,
-                "Document Description": doc.doc_desc,
-                "Document Text": doc.doc_text,
-                "Document Create Date": doc.doc_createdate,
-                "Document Revise Date": doc.doc_revisedate,
-                "Display Date": doc.display_date,
-                "Expire Date": doc.expire_date,
-                "Share Flag": doc.share_flag,
-                "Audit Flag": doc.audit_flag,
-                "Document Meta": doc.doc_meta,
-                "Document Location": doc.doc_loc,
-                "Document MD5": doc.doc_md5
-            })
+            doc_list = []
+            for doc in documents:
+                doc_list.append({
+                    "Document ID": doc.doc_id,
+                    "Document URI": doc.doc_uri,
+                    "Document Type": doc.doc_type,
+                    "Document Title": doc.doc_title,
+                    "Document Description": doc.doc_desc,
+                    "Document Text": doc.doc_text,
+                    "Document Create Date": doc.doc_createdate,
+                    "Document Revise Date": doc.doc_revisedate,
+                    "Display Date": doc.display_date,
+                    "Expire Date": doc.expire_date,
+                    "Share Flag": doc.share_flag,
+                    "Audit Flag": doc.audit_flag,
+                    "Document Meta": doc.doc_meta,
+                    "Document Location": doc.doc_loc,
+                    "Document MD5": doc.doc_md5
+                })
         
         return doc_list
 
     if request.method == 'POST':
         data = json.loads(request.body)
         user_id = data.get('user_id')
-        documents = fetch_documents(user_id)
+        doc_id = data.get('doc_id')
+        documents = fetch_documents(user_id, doc_id)
         return JsonResponse({'status': 'success', 'documents': documents}, status=200)
     
     return JsonResponse({'error': 'Invalid request'}, status=400)
+
 
 @csrf_exempt
 def update_document(request):
@@ -230,6 +253,39 @@ def delete_document(request):
 
         return JsonResponse({'status': 'success'}, status=200)
     return JsonResponse({'error': 'Invalid request'}, status=400)
+
+@csrf_exempt
+def display_latest_documents(request):
+    if request.method == 'POST':
+        data = json.loads(request.body)
+        amount = data.get('amount', 3)
+
+        try:
+            # Get the current date and time
+            current_datetime = datetime.now()
+
+            # Retrieve three news items within display_date and expire_date
+            documents = Document.objects.filter(
+                (Q(display_date__isnull=True) | Q(display_date__lte=current_datetime)),
+                (Q(expire_date__isnull=True) | Q(expire_date__gte=current_datetime))
+            ).order_by('-display_date')[:amount]
+
+            if documents.exists():
+                news_items = {}
+                for doc in documents:
+                    news_item = {
+                        "Document ID": doc.doc_id,
+                        "Title": doc.doc_title,
+                        "Description": doc.doc_desc
+                    }
+                    news_items[doc.doc_id] = news_item
+                return JsonResponse({'status': 'success', 'news_items': news_items}, status=200)
+            else:
+                return JsonResponse({'status': 'success', 'news_items': {}}, status=200)
+
+        except Exception as e:
+            return JsonResponse({'status': 'error', 'message': str(e)}, status=500)
+
 
 ########################
 import pyarrow as pa

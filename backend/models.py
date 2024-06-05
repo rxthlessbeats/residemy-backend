@@ -26,7 +26,7 @@ def documents_upload_uri(instance, filename):
     return f'documents/{instance.doc_id}.{file_extension}'
     
 class Document(models.Model):
-    doc_id = models.UUIDField(editable=False, unique=True, primary_key=True)
+    doc_id = models.CharField(max_length=1000, editable=False, unique=True, primary_key=True)
     user = models.ForeignKey(User, on_delete=models.CASCADE)
     doc_type = models.CharField(max_length=10)
     doc_loc = models.CharField(max_length=255)
