@@ -14,21 +14,22 @@ urlpatterns = [
     path('api/get_user_data/', views.get_user_data, name='get_user_data'),
 
     # document model
-    path('api/save_document/', views.save_document, name='save_document'),
-    # path('api/list_documents/', views.list_documents, name='list_documents'),
+    path('api/upload_document/', views.upload_document, name='upload_document'),
+    path('api/list_documents/', views.list_documents, name='list_documents'),
+    path('api/update_document/', views.update_document, name='update_document'),
     path('api/delete_document/', views.delete_document, name='delete_document'),
-
-    path('api/forum_list/', views.forum_list, name='forum_list'),
-    path('api/forums/<uuid:forum_id>/documents/', views.forum_documents, name='forum_documents'),
-    path('api/record-click', views.record_click, name='record_click'),
-    path('api/forum-record-click', views.forum_record_click, name='forum_record_click'),
-    path('api/text_summarization/', views.text_summarization, name='text_summarization'),
-    path('accounts/', include('allauth.urls')),
-    path('cms/', include('cms.urls')),  # Include Django CMS URLs
+    path('api/store_research_in_db/', views.store_research_in_db, name='store_research'),
+    path('api/display_research_paper_table/', views.display_research_paper_table, name='display_research_paper_table'),
 
     # openai 
     path('api/ask_question_about_image/', openai_views.ask_question_about_image, name='ask_question_about_image'),
+    path('api/get_embedding/', openai_views.get_embedding, name='get_embedding'),
+    path('api/text_summarization/', openai_views.text_summarization, name='text_summarization'),
+    path('api/generate_description/', openai_views.generate_description, name='generate_description'),
 
+    path('accounts/', include('allauth.urls')),
+    path('cms/', include('cms.urls')),  # Include Django CMS URLs
+    
 ] + static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT) \
 + static(settings.STATIC_URL, document_root=settings.STATIC_ROOT)
 

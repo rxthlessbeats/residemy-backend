@@ -14,6 +14,8 @@ from pathlib import Path
 import os
 from dotenv import load_dotenv
 import logging
+from django.core.management.commands.runserver import Command as runserver
+runserver.default_port = "5005"
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -115,12 +117,12 @@ WSGI_APPLICATION = "backend.wsgi.application"
 DATABASES = {
     "default": {
         "ENGINE": "django.db.backends.sqlite3",
-        "NAME": BASE_DIR / "db.sqlite3",
+        "NAME": f"{BASE_DIR}/db.sqlite3",
     }
 }
 
-MEDIA_ROOT = os.path.join(BASE_DIR, 'media')
-MEDIA_URL = '/media/'
+MEDIA_ROOT = os.path.join(BASE_DIR, 'master')
+MEDIA_URL = '/master/'
 
 THUMBNAIL_HIGH_RESOLUTION = True
 
@@ -165,7 +167,7 @@ TIME_ZONE = "UTC"
 
 USE_I18N = True
 
-USE_TZ = True
+USE_TZ = False
 
 CMS_CONFIRM_VERSION4 = True
 

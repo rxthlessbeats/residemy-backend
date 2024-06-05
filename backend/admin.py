@@ -1,9 +1,8 @@
 from django.contrib import admin
-from .models import Forum, ForumDocument, User, Document
+from .models import User, Document
 
 from django.contrib.auth.admin import UserAdmin as BaseUserAdmin
 
-# @admin.register(Document)
 @admin.register(User)
 class UserAdmin(BaseUserAdmin):
     fieldsets = (
@@ -16,15 +15,9 @@ class UserAdmin(BaseUserAdmin):
     search_fields = ('line_user_id', 'display_name', 'email')
     ordering = ('line_user_id',)
 
-class ForumDocumentInline(admin.TabularInline):
-    model = ForumDocument
-    extra = 1  # Number of extra forms to display
-    exclude = ('snapshot', 'upload_time', 'click_count',)
-    fields = ('title', 'document', 'click_count')
-    readonly_fields = ('click_count',)
-
-@admin.register(Forum)
-class ForumAdmin(admin.ModelAdmin):
-    list_display = ('title', 'folderId', 'upload_time', )
-    inlines = [ForumDocumentInline]
-    readonly_fields = ('click_count',)
+@admin.register(Document)
+class DocumentAdmin(admin.ModelAdmin):
+    list_display = ('doc_id', 'doc_title', 'doc_type', 'user', 'display_date', 'expire_date', 'doc_createdate', 'doc_revisedate')
+    search_fields = ('doc_title', 'user__username', 'doc_id')
+    list_filter = ('doc_type', 'share_flag', 'audit_flag', 'display_date', 'expire_date')
+    ordering = ('-doc_createdate',)

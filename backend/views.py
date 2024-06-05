@@ -2,20 +2,20 @@
 import os
 import json
 import hashlib
+import requests
+from datetime import datetime
+import pandas as pd
 from dotenv import load_dotenv
-from .models import Forum, ForumDocument, User, Document
 
+from .models import User, Document
 from django.http import JsonResponse
 from django.shortcuts import get_object_or_404
 from django.views.decorators.csrf import csrf_exempt
-
-import openai
-import textract
-
+from .utils import generate_pdf_thumbnail, generate_text_thumbnail
 
 load_dotenv(dotenv_path='.env.local', override=True)
-openai.api_key = os.getenv("OPENAI_API_KEY")
-client = openai.OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+BACKEND_URI = os.getenv("BACKEND_URI")
+LANCEDB_URI = 'master/lancedb/'
 
 ###################
 # user table
@@ -82,23 +82,22 @@ def calculate_md5(file_data):
     return hashlib.md5(file_data).hexdigest()
 
 @csrf_exempt
-def save_document(request):
+def upload_document(request):
     if request.method == 'POST':
-        data = json.loads(request.body)
-        user_id = data.get('user_id')
-        doc_title = data.get('doc_title')
-        doc_desc = data.get('doc_desc')
-        doc_type = data.get('doc_type')
-        doc_md5 = data.get('doc_md5')
-        doc_loc = data.get('doc_loc')
-        doc_uri = data.get('doc_uri')
-        doc_text = data.get('doc_text')
-        display_date = data.get('display_date')
-        expire_date = data.get('expire_date')
+        user_id = request.POST.get('user_id')
+        doc_id = request.POST.get('doc_id')
+        doc_title = request.POST.get('doc_title')
+        doc_desc = request.POST.get('doc_desc')
+        doc_type = request.POST.get('doc_type')
+        doc_md5 = request.POST.get('doc_md5')
+        doc_loc = request.POST.get('doc_loc')
+        doc_uri = request.POST.get('doc_uri')
+        doc_text = request.POST.get('doc_text')
+        display_date = request.POST.get('display_date')
+        expire_date = request.POST.get('expire_date')
+        file = request.FILES['file']
 
         user = get_object_or_404(User, line_user_id=user_id)
-
-        doc_id = hashlib.md5((user_id + doc_title).encode()).hexdigest()
 
         document, created = Document.objects.get_or_create(doc_id=doc_id, defaults={
             'user': user,
@@ -111,6 +110,7 @@ def save_document(request):
             'doc_text': doc_text,
             'display_date': display_date,
             'expire_date': expire_date,
+            'file': file,
         })
 
         if not created:
@@ -123,6 +123,24 @@ def save_document(request):
             document.doc_text = doc_text
             document.display_date = display_date
             document.expire_date = expire_date
+            document.file.save(file.name, file)
+            document.save()
+
+        file.seek(0)
+        # Generate and save the thumbnail
+        if doc_type == 'pdf':
+            # Generate thumbnail for PDF
+            thumbnail = generate_pdf_thumbnail(file, doc_id)
+            document.thumbnail.save(thumbnail.name, thumbnail)
+            document.save()
+        elif doc_type == 'txt':
+            # Generate thumbnail for text file
+            try:
+                text_preview = doc_text[:500] 
+            except:
+                text_preview = doc_text[:]
+            thumbnail = generate_text_thumbnail(text_preview, doc_id)
+            document.thumbnail.save(thumbnail.name, thumbnail)
             document.save()
 
         return JsonResponse({'status': 'success', 'doc_id': document.doc_id}, status=200)
@@ -130,29 +148,67 @@ def save_document(request):
 
 @csrf_exempt
 def list_documents(request):
-    if request.method == 'POST':
-        data = json.loads(request.body)
-        user_id = data.get('user_id')
-
-        user = get_object_or_404(User, line_user_id=user_id)
-        documents = Document.objects.filter(user=user)
+    def fetch_documents(user_id=None):
+        if user_id:
+            user = get_object_or_404(User, line_user_id=user_id)
+            documents = Document.objects.filter(user=user)
+        else:
+            documents = Document.objects.all()
 
         doc_list = []
         for doc in documents:
             doc_list.append({
-                'doc_id': doc.doc_id,
-                'doc_title': doc.doc_title,
-                'doc_desc': doc.doc_desc,
-                'doc_type': doc.doc_type,
-                'doc_md5': doc.doc_md5,
-                'doc_loc': doc.doc_loc,
-                'doc_uri': doc.doc_uri,
-                'doc_text': doc.doc_text,
-                'display_date': doc.display_date,
-                'expire_date': doc.expire_date,
+                "Document ID": doc.doc_id,
+                "Document URI": doc.doc_uri,
+                "Document Type": doc.doc_type,
+                "Document Title": doc.doc_title,
+                "Document Description": doc.doc_desc,
+                "Document Text": doc.doc_text,
+                "Document Create Date": doc.doc_createdate,
+                "Document Revise Date": doc.doc_revisedate,
+                "Display Date": doc.display_date,
+                "Expire Date": doc.expire_date,
+                "Share Flag": doc.share_flag,
+                "Audit Flag": doc.audit_flag,
+                "Document Meta": doc.doc_meta,
+                "Document Location": doc.doc_loc,
+                "Document MD5": doc.doc_md5
             })
+        
+        return doc_list
 
-        return JsonResponse({'status': 'success', 'documents': doc_list}, status=200)
+    if request.method == 'POST':
+        data = json.loads(request.body)
+        user_id = data.get('user_id')
+        documents = fetch_documents(user_id)
+        return JsonResponse({'status': 'success', 'documents': documents}, status=200)
+    
+    return JsonResponse({'error': 'Invalid request'}, status=400)
+
+@csrf_exempt
+def update_document(request):
+    if request.method == 'POST':
+        data = json.loads(request.body)
+        doc_id = data.get('doc_id')
+        doc_title = data.get('doc_title')
+        doc_desc = data.get('doc_desc')
+        doc_text = data.get('doc_text')
+        display_date = data.get('display_date')
+        expire_date = data.get('expire_date')
+
+        document = get_object_or_404(Document, doc_id=doc_id)
+        document.doc_title = doc_title
+        document.doc_desc = doc_desc
+        document.doc_text = doc_text
+        if display_date:
+            document.display_date = display_date
+        if expire_date:
+            document.expire_date = expire_date
+        
+        document.save()
+
+        return JsonResponse({'status': 'success', 'message': 'Document updated successfully.'}, status=200)
+    
     return JsonResponse({'error': 'Invalid request'}, status=400)
 
 @csrf_exempt
@@ -167,102 +223,102 @@ def delete_document(request):
 
         document.delete()
 
+        vdb = lancedb.connect(LANCEDB_URI)
+        tbl_research = vdb.open_table("Research_paper_table")
+        if tbl_research:
+            tbl_research.delete(f"""doc_id = '{doc_id}'""")
+
         return JsonResponse({'status': 'success'}, status=200)
     return JsonResponse({'error': 'Invalid request'}, status=400)
 
-#########################
+########################
+import pyarrow as pa
+import lancedb
+from lancedb.pydantic import Vector, LanceModel
+from .utils import datetime_to_timestamp, json_to_dataframe
 
-def forum_list(request):
-    forums = Forum.objects.all()
-    data = [
-        {
-            "id": forum.folderId,
-            "title": forum.title,
-            "description": forum.description,
-            "logo_url": forum.get_logo_url(),
-            "upload_time": forum.upload_time.strftime('%Y-%m-%d'),
-            "click_count": forum.click_count,
-        }
-        for forum in forums
-    ]
-    return JsonResponse(data, safe=False)
+class DocumentPage(LanceModel):
+        vector: Vector(1536) # type: ignore
+        content: str
+        doc_id: str
+        user_id: str
+        page_id: int
+        seg_id: int
+        doc_type: str
 
-def forum_documents(request, forum_id):
+class ResearchPaper(LanceModel):
+        vector: Vector(1536) # type: ignore
+        content: str
+        doc_id: str
+        user_id: str
+        page_id: int
+        display_date: int
+        expire_date:int
+
+@csrf_exempt
+def store_research_in_db(request):
+    if request.method == 'POST':
+        data = json.loads(request.body)
+        json_data = data.get('json_data')
+        user_id = data.get('user_id')
+        doc_id = data.get('doc_id')
+        display_date = datetime_to_timestamp(datetime.fromisoformat(data.get('display_date')))
+        expire_date = datetime_to_timestamp(datetime.fromisoformat(data.get('expire_date')))
+
+        # Connect to LanceDB
+        vdb = lancedb.connect(LANCEDB_URI)
+
+        # Convert JSON data to DataFrame
+        df = json_to_dataframe(json_data, doc_id=doc_id, user_id=user_id)
+        tbl_research = vdb.create_table("Research_paper_table", schema=ResearchPaper.to_arrow_schema(), exist_ok=True)
+
+        # Prepare records
+        records = []
+        for _, row in df.iterrows():
+            text = row['content']
+            embedding_response = requests.post(
+                f"{BACKEND_URI}/api/get_embedding/",
+                json={'text': text}
+            )
+            embedding = embedding_response.json().get('embedding')
+            records.append({
+                'vector': embedding,
+                'content': row['content'],
+                'doc_id': row['doc_id'],
+                'user_id': row['user_id'],
+                'page_id': row['page'],
+                'display_date': display_date,
+                'expire_date': expire_date
+            })
+
+        records_df = pd.DataFrame(records)
+        tbl_research.add(records_df)
+
+        return JsonResponse({'status': 'success'}, status=200)
+    return JsonResponse({'error': 'Invalid request method'}, status=400)
+
+def display_research_paper_table(request):
+    db = lancedb.connect("master/lancedb/")
+
     try:
-        # Retrieve the forum by its ID or handle the case where it doesn't exist
-        forum = Forum.objects.get(pk=forum_id)
-        documents = forum.forum_documents.all()
-        data = [
-            {
-                "id": document.id,
-                "title": document.title,
-                "document_url": document.document.url,
-                "snapshot_url": document.snapshot.url if document.snapshot else None,
-                "upload_time": document.upload_time.strftime('%Y-%m-%d'),
-                "click_count": document.click_count,
-            }
-            for document in documents
-        ]
-        return JsonResponse(data, safe=False)
-    except Forum.DoesNotExist:
-        return JsonResponse({'error': 'Forum not found'}, status=404)
+        tbl_research = db.open_table("Research_paper_table")
 
-@csrf_exempt
-def record_click(request):
-    if request.method == 'POST':
-        data = json.loads(request.body)
-        ppt_id = data.get('pptId')
-        # Increment click count in the database
-        ppt = ForumDocument.objects.get(id=ppt_id)
-        ppt.click_count += 1
-        ppt.save()
+        # Convert to DataFrame
+        df = tbl_research.to_pandas()
 
-        return JsonResponse({'status': 'success'})
+        # Convert timestamps back to datetime
+        if 'display_date' in df.columns:
+            df['display_date'] = pd.to_datetime(df['display_date'], unit='s')
+        if 'expire_date' in df.columns:
+            df['expire_date'] = pd.to_datetime(df['expire_date'], unit='s')
 
-    return JsonResponse({'status': 'error'}, status=400)
+        # Convert DataFrame to JSON
+        data = df.to_json(orient='records', date_format='iso')
 
-@csrf_exempt
-def forum_record_click(request):
-    if request.method == 'POST':
-        data = json.loads(request.body)
-        forum_id = data.get('forumId')
-        # Increment click count in the database
-        forum = Forum.objects.get(pk=forum_id)
-        forum.click_count += 1
-        forum.save()
+        return JsonResponse({'status': 'success', 'data': json.loads(data)}, status=200)
 
-        return JsonResponse({'status': 'success'})
+    except Exception as e:
+        # logging.error(f"(display_research_paper_table) An error occurred while retrieving the research paper table: {e}")
+        return JsonResponse({'status': 'error', 'message': f"(display_research_paper_table) An error occurred while retrieving the research paper table: {str(e)}"}, status=500)
 
-    return JsonResponse({'status': 'error'}, status=400)
-
-@csrf_exempt
-def text_summarization(request):
-    if request.method == 'POST':
-        # Check if the request has a file in it
-        if 'document' in request.FILES:
-            document = request.FILES['document']
-            # Assuming the document is a PDF or a TXT file
-            text_to_summarize = textract.process(document.temporary_file_path()).decode('utf-8')
-        else:
-            # Load JSON data from request body if no file is present
-            print("Received request body:", request.body)
-            data = json.loads(request.body)
-            text_to_summarize = data.get('text', None)
-
-        if not text_to_summarize:
-            return JsonResponse({'error': 'No text provided for summarization.'}, status=400)
-
-        # Use OpenAI API to summarize the text
-        response = client.chat.completions.create(model="gpt-4-turbo",  # Ensure this is the correct model you have access to
-        messages=[
-            {"role": "system", "content": "You are a helpful assistant."},
-            {"role": "user", "content": f"Summarize the following text: {text_to_summarize}"}
-        ])
-
-        # Extract the summary from the response
-        summary = response.choices[0].message.content
-
-        # Return the summary in a JsonResponse
-        return JsonResponse({'summary': summary})
-
-    return JsonResponse({'error': 'This endpoint only supports POST requests.'}, status=405)
+#########################
