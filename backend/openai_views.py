@@ -58,7 +58,6 @@ def get_embedding(request):
             text = data.get('text')
             model = data.get('model', 'text-embedding-3-small')
 
-            text = text.replace("\n", " ")
             embedding = client.embeddings.create(input = [text], model=model).data[0].embedding
 
             return JsonResponse({'embedding': embedding}, status=200)
@@ -75,6 +74,7 @@ def generate_description(request):
         model_name = data.get('model_name', 'gpt-3.5-turbo')
         max_tokens = data.get('max_tokens', 0)
         max_output_tokens = data.get('max_output_tokens', 500)
+        lang_mode = data.get('lang_mode', 1)
 
         # Define the context window size for each model
         model_token_input_limits = {
@@ -88,7 +88,14 @@ def generate_description(request):
             # Determine the language of the input text
             mylang = lang_detect(text[0:200])
 
-            languagestr = f"Please output in {mylang}, your answer:"
+            if lang_mode == 1:
+                # Determine the language of the input text
+                mylang = lang_detect(text[0:200])
+
+                languagestr = f"Please output in {mylang}, your answer:"
+            else:
+                languagestr = ""
+
             prompt = f"\n\n{text}\n\n{languagestr}"
 
             # Calculate the number of tokens in the prompt

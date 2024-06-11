@@ -154,9 +154,9 @@ def list_documents(request):
             document = get_object_or_404(Document, doc_id=doc_id)
             doc_list = [{
                 "Document ID": document.doc_id,
+                "Document Title": document.doc_title,
                 "Document URI": document.doc_uri,
                 "Document Type": document.doc_type,
-                "Document Title": document.doc_title,
                 "Document Description": document.doc_desc,
                 "Document Text": document.doc_text,
                 "Document Create Date": document.doc_createdate,
@@ -180,9 +180,9 @@ def list_documents(request):
             for doc in documents:
                 doc_list.append({
                     "Document ID": doc.doc_id,
+                    "Document Title": doc.doc_title,
                     "Document URI": doc.doc_uri,
                     "Document Type": doc.doc_type,
-                    "Document Title": doc.doc_title,
                     "Document Description": doc.doc_desc,
                     "Document Text": doc.doc_text,
                     "Document Create Date": doc.doc_createdate,
@@ -255,7 +255,7 @@ def delete_document(request):
     return JsonResponse({'error': 'Invalid request'}, status=400)
 
 @csrf_exempt
-def display_latest_documents(request):
+def display_documents(request):
     if request.method == 'POST':
         data = json.loads(request.body)
         amount = data.get('amount', 3)
@@ -268,13 +268,13 @@ def display_latest_documents(request):
             documents = Document.objects.filter(
                 (Q(display_date__isnull=True) | Q(display_date__lte=current_datetime)),
                 (Q(expire_date__isnull=True) | Q(expire_date__gte=current_datetime))
-            ).order_by('-display_date')[:amount]
+            ).order_by('?')[:amount][:amount]
 
             if documents.exists():
                 news_items = {}
                 for doc in documents:
                     news_item = {
-                        "Document ID": doc.doc_id,
+                        # "Document ID": doc.doc_id,
                         "Title": doc.doc_title,
                         "Description": doc.doc_desc
                     }
@@ -288,7 +288,6 @@ def display_latest_documents(request):
 
 
 ########################
-import pyarrow as pa
 import lancedb
 from lancedb.pydantic import Vector, LanceModel
 from .utils import datetime_to_timestamp, json_to_dataframe
