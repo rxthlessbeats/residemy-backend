@@ -21,6 +21,8 @@ urlpatterns = [
     path('api/store_research_in_db/', views.store_research_in_db, name='store_research'),
     path('api/display_research_paper_table/', views.display_research_paper_table, name='display_research_paper_table'),
     path('api/display_documents/', views.display_documents, name='display_documents'),
+    path('api/process_meta_item/', views.process_meta_item, name='process_meta_item'),
+    path('api/extract_text_from_video/', views.extract_text_from_video, name='extract_text_from_video'),
 
     # openai 
     path('api/ask_question_about_image/', openai_views.ask_question_about_image, name='ask_question_about_image'),

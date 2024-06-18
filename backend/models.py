@@ -22,9 +22,11 @@ class User(AbstractUser):
         return self.line_user_id
     
 def documents_upload_uri(instance, filename):
-    file_extension = filename.split('.')[-1]
-    return f'documents/{instance.doc_id}.{file_extension}'
+    return f'{instance.file_type}/{instance.doc_id}.{instance.doc_type}'
     
+def image_upload_uri(instance, filename):
+    return f'{instance.file_type}/thumbnails/{instance.doc_id}_thumbnail.png'
+
 class Document(models.Model):
     doc_id = models.CharField(max_length=1000, editable=False, unique=True, primary_key=True)
     user = models.ForeignKey(User, on_delete=models.CASCADE)
@@ -36,6 +38,7 @@ class Document(models.Model):
     doc_md5 = models.CharField(max_length=255)
     doc_text = models.TextField(blank=True, null=True)
     doc_meta = models.TextField(blank=True, null=True)
+    file_type = models.CharField(max_length=255, blank=True, null=True)
     share_flag = models.BooleanField(default=False)
     audit_flag = models.BooleanField(default=False)
     display_date = models.DateTimeField(null=True, blank=True)
@@ -43,19 +46,7 @@ class Document(models.Model):
     doc_createdate = models.DateTimeField(auto_now_add=True)
     doc_revisedate = models.DateTimeField(auto_now=True)
     file = models.FileField(upload_to=documents_upload_uri, null=True)
-    thumbnail = models.ImageField(upload_to='documents/thumbnails/', blank=True, null=True)
+    thumbnail = models.ImageField(upload_to=image_upload_uri, blank=True, null=True)
 
     def __str__(self):
         return self.doc_title
-
-def generate_forum_uuid():
-    pass
-
-def forum_directory_path():
-    pass
-
-def document_directory_path():
-    pass
-
-def snapshot_directory_path():
-    pass

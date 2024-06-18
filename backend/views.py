@@ -1,7 +1,6 @@
 # views.py
 import os
 import json
-import hashlib
 import requests
 from datetime import datetime
 import pandas as pd
@@ -12,7 +11,17 @@ from django.http import JsonResponse
 from django.shortcuts import get_object_or_404
 from django.views.decorators.csrf import csrf_exempt
 from django.db.models import Q
-from .utils import generate_pdf_thumbnail, generate_text_thumbnail
+from .utils import generate_pdf_thumbnail, generate_text_thumbnail, generate_video_thumbnail
+from .openai_views import generate_summary
+
+import base64
+import cv2
+from moviepy.editor import VideoFileClip
+
+import tempfile
+import openai
+from pydub import AudioSegment
+from moviepy.video.io.ffmpeg_tools import ffmpeg_extract_audio
 
 load_dotenv(dotenv_path='.env.local', override=True)
 BACKEND_URI = os.getenv("BACKEND_URI")
@@ -79,9 +88,6 @@ def get_user_data(request):
 ########################
 # document table
 
-def calculate_md5(file_data):
-    return hashlib.md5(file_data).hexdigest()
-
 @csrf_exempt
 def upload_document(request):
     if request.method == 'POST':
@@ -94,6 +100,7 @@ def upload_document(request):
         doc_loc = request.POST.get('doc_loc')
         doc_uri = request.POST.get('doc_uri')
         doc_text = request.POST.get('doc_text')
+        file_type = request.POST.get('file_type')
         display_date = request.POST.get('display_date')
         expire_date = request.POST.get('expire_date')
         file = request.FILES['file']
@@ -109,6 +116,7 @@ def upload_document(request):
             'doc_loc': doc_loc,
             'doc_uri': doc_uri,
             'doc_text': doc_text,
+            'file_type': file_type,
             'display_date': display_date,
             'expire_date': expire_date,
             'file': file,
@@ -122,6 +130,7 @@ def upload_document(request):
             document.doc_loc = doc_loc
             document.doc_uri = doc_uri
             document.doc_text = doc_text
+            document.file_type = file_type
             document.display_date = display_date
             document.expire_date = expire_date
             document.file.save(file.name, file)
@@ -144,30 +153,37 @@ def upload_document(request):
             document.thumbnail.save(thumbnail.name, thumbnail)
             document.save()
 
+        elif file_type == 'videos':
+            thumbnail = generate_video_thumbnail(doc_uri, doc_id)
+            if thumbnail:
+                document.thumbnail.save(thumbnail.name, thumbnail)
+                document.save()
+
         return JsonResponse({'status': 'success', 'doc_id': document.doc_id}, status=200)
     return JsonResponse({'error': 'Invalid request'}, status=400)
 
 @csrf_exempt
 def list_documents(request):
-    def fetch_documents(user_id=None, doc_id=None):
+    def fetch_documents(file_type, user_id=None, doc_id=None):
         if doc_id:
             document = get_object_or_404(Document, doc_id=doc_id)
             doc_list = [{
-                "Document ID": document.doc_id,
-                "Document Title": document.doc_title,
-                "Document URI": document.doc_uri,
-                "Document Type": document.doc_type,
-                "Document Description": document.doc_desc,
-                "Document Text": document.doc_text,
-                "Document Create Date": document.doc_createdate,
-                "Document Revise Date": document.doc_revisedate,
+                f"{file_type} ID": document.doc_id,
+                f"{file_type} Title": document.doc_title, 
+                f"{file_type} URI": document.doc_uri,
+                f"{file_type} Type": document.doc_type,
+                f"{file_type} Description": document.doc_desc,
+                f"{file_type} Text": document.doc_text,
+                "File Type": document.file_type,
+                "Create Date": document.doc_createdate,
+                "Revise Date": document.doc_revisedate,
                 "Display Date": document.display_date,
                 "Expire Date": document.expire_date,
                 "Share Flag": document.share_flag,
                 "Audit Flag": document.audit_flag,
-                "Document Meta": document.doc_meta,
-                "Document Location": document.doc_loc,
-                "Document MD5": document.doc_md5
+                f"{file_type} Meta": document.doc_meta,
+                f"{file_type} Location": document.doc_loc,
+                f"{file_type} MD5": document.doc_md5
             }]
         else:
             if user_id:
@@ -179,21 +195,22 @@ def list_documents(request):
             doc_list = []
             for doc in documents:
                 doc_list.append({
-                    "Document ID": doc.doc_id,
-                    "Document Title": doc.doc_title,
-                    "Document URI": doc.doc_uri,
-                    "Document Type": doc.doc_type,
-                    "Document Description": doc.doc_desc,
-                    "Document Text": doc.doc_text,
-                    "Document Create Date": doc.doc_createdate,
-                    "Document Revise Date": doc.doc_revisedate,
+                    f"{file_type} ID": doc.doc_id,
+                    f"{file_type} Title": doc.doc_title,
+                    f"{file_type} URI": doc.doc_uri,
+                    f"{file_type} Type": doc.doc_type,
+                    f"{file_type} Description": doc.doc_desc,
+                    f"{file_type} Text": doc.doc_text,
+                    "File Type": doc.file_type,
+                    "Create Date": doc.doc_createdate,
+                    "Revise Date": doc.doc_revisedate,
                     "Display Date": doc.display_date,
                     "Expire Date": doc.expire_date,
                     "Share Flag": doc.share_flag,
                     "Audit Flag": doc.audit_flag,
-                    "Document Meta": doc.doc_meta,
-                    "Document Location": doc.doc_loc,
-                    "Document MD5": doc.doc_md5
+                    f"{file_type} Meta": doc.doc_meta,
+                    f"{file_type} Location": doc.doc_loc,
+                    f"{file_type} MD5": doc.doc_md5
                 })
         
         return doc_list
@@ -202,11 +219,11 @@ def list_documents(request):
         data = json.loads(request.body)
         user_id = data.get('user_id')
         doc_id = data.get('doc_id')
-        documents = fetch_documents(user_id, doc_id)
+        file_type = data.get('file_type')
+        documents = fetch_documents(file_type, user_id, doc_id)
         return JsonResponse({'status': 'success', 'documents': documents}, status=200)
     
     return JsonResponse({'error': 'Invalid request'}, status=400)
-
 
 @csrf_exempt
 def update_document(request):
@@ -216,17 +233,17 @@ def update_document(request):
         doc_title = data.get('doc_title')
         doc_desc = data.get('doc_desc')
         doc_text = data.get('doc_text')
+        doc_meta = data.get('doc_meta')
         display_date = data.get('display_date')
         expire_date = data.get('expire_date')
 
         document = get_object_or_404(Document, doc_id=doc_id)
-        document.doc_title = doc_title
-        document.doc_desc = doc_desc
-        document.doc_text = doc_text
-        if display_date:
-            document.display_date = display_date
-        if expire_date:
-            document.expire_date = expire_date
+        if doc_title: document.doc_title = doc_title
+        if doc_desc: document.doc_desc = doc_desc
+        if doc_text: document.doc_text = doc_text
+        if doc_meta: document.doc_meta = doc_meta
+        if display_date: document.display_date = display_date
+        if expire_date: document.expire_date = expire_date
         
         document.save()
 
@@ -286,29 +303,25 @@ def display_documents(request):
         except Exception as e:
             return JsonResponse({'status': 'error', 'message': str(e)}, status=500)
 
-
 ########################
 import lancedb
 from lancedb.pydantic import Vector, LanceModel
 from .utils import datetime_to_timestamp, json_to_dataframe
-
-class DocumentPage(LanceModel):
-        vector: Vector(1536) # type: ignore
-        content: str
-        doc_id: str
-        user_id: str
-        page_id: int
-        seg_id: int
-        doc_type: str
 
 class ResearchPaper(LanceModel):
         vector: Vector(1536) # type: ignore
         content: str
         doc_id: str
         user_id: str
+        file_type: str
         page_id: int
+    
+        chunk_id: int
+        start: float
+        end: float
+
         display_date: int
-        expire_date:int
+        expire_date: int
 
 @csrf_exempt
 def store_research_in_db(request):
@@ -317,6 +330,7 @@ def store_research_in_db(request):
         json_data = data.get('json_data')
         user_id = data.get('user_id')
         doc_id = data.get('doc_id')
+        file_type = data.get('file_type')
         display_date = datetime_to_timestamp(datetime.fromisoformat(data.get('display_date')))
         expire_date = datetime_to_timestamp(datetime.fromisoformat(data.get('expire_date')))
 
@@ -324,11 +338,12 @@ def store_research_in_db(request):
         vdb = lancedb.connect(LANCEDB_URI)
 
         # Convert JSON data to DataFrame
-        df = json_to_dataframe(json_data, doc_id=doc_id, user_id=user_id)
+        df = json_to_dataframe(json_data, doc_id=doc_id, user_id=user_id, file_type=file_type)
         tbl_research = vdb.create_table("Research_paper_table", schema=ResearchPaper.to_arrow_schema(), exist_ok=True)
-
+        print(df)
         # Prepare records
         records = []
+
         for _, row in df.iterrows():
             text = row['content']
             embedding_response = requests.post(
@@ -341,7 +356,13 @@ def store_research_in_db(request):
                 'content': row['content'],
                 'doc_id': row['doc_id'],
                 'user_id': row['user_id'],
+                'file_type': row['file_type'],
                 'page_id': row['page'],
+                
+                'chunk_id': row['id'],
+                'start': row['start'],
+                'end': row['end'],
+
                 'display_date': display_date,
                 'expire_date': expire_date
             })
@@ -377,3 +398,167 @@ def display_research_paper_table(request):
         return JsonResponse({'status': 'error', 'message': f"(display_research_paper_table) An error occurred while retrieving the research paper table: {str(e)}"}, status=500)
 
 #########################
+
+@csrf_exempt
+def process_meta_item(request):
+    if request.method == 'POST':
+        data = json.loads(request.body)
+        video_path = data.get('video_path')
+        meta_item = data.get('meta_item')
+        doc_meta_tmp = data.get('doc_meta_tmp')
+        languagestr = data.get('languagestr', 'en')
+
+        base64Frames = []
+        # base_video_path, _ = os.path.splitext(video_path)
+
+        video = cv2.VideoCapture(video_path)
+        fps = video.get(cv2.CAP_PROP_FPS)
+
+        # Extract frames within the start and end times
+        start_time = meta_item.get('start')
+        end_time = meta_item.get('end')
+        if start_time is not None and end_time is not None:
+            for time_point in range(int(start_time), int(end_time), 2):
+                frame_number = int(time_point * fps)
+                video.set(cv2.CAP_PROP_POS_FRAMES, frame_number)
+                success, frame = video.read()
+                if success:
+                    _, buffer = cv2.imencode(".jpg", frame)
+                    base64Frames.append(base64.b64encode(buffer).decode("utf-8"))
+
+        video.release()
+
+        # Extract audio from video
+        audio_path = f"{os.path.dirname(video_path)}/audios/{video_path.split('.')[0]}.mp3"
+        clip = VideoFileClip(video_path)
+        clip.audio.write_audiofile(audio_path, bitrate="32k")
+        clip.audio.close()
+        clip.close()
+
+        # Generate summary
+        transcript_data = "\n".join([item['text'] for item in doc_meta_tmp])
+        extra_info = f"The abstract of this video is {meta_item['text']}."
+        summary = generate_summary(base64Frames, transcript_data, extra_info, languagestr)
+
+        meta_item['text'] = summary  # Update the summary in meta_item
+
+        response_data = {
+            'meta_item': meta_item,
+            'base64Frames': base64Frames,
+            'audio_path': audio_path
+        }
+
+        return JsonResponse(response_data, status=200)
+
+    return JsonResponse({'error': 'Invalid request'}, status=400)
+
+@csrf_exempt
+def extract_text_from_video(request):
+    if request.method == 'POST':
+        try:
+            video_content = request.FILES['file'].read()
+            temp_dir = os.path.join(os.getcwd(), 'temp')
+            os.makedirs(temp_dir, exist_ok=True)
+
+            with tempfile.NamedTemporaryFile(delete=False, suffix='.mp4', dir=temp_dir) as temp_video_file:
+                temp_video_file.write(video_content)
+                temp_video_file_path = temp_video_file.name
+
+            with tempfile.NamedTemporaryFile(delete=False, suffix='.mp3', dir=temp_dir) as temp_output_file:
+                temp_output_file_name = temp_output_file.name
+
+            if extract_audio(temp_video_file_path, temp_output_file_name):
+                transcripts = extract_and_concatenate_segments(transcribe_audio(temp_output_file_name, temp_dir))
+
+            os.remove(temp_video_file_path)
+            os.remove(temp_output_file_name)
+
+            print("transcripts:",transcripts)
+            
+            return JsonResponse({'status': 'success', 'transcripts': transcripts}, status=200)
+        except Exception as e:
+            return JsonResponse({'status': 'error', 'message': str(e)}, status=500)
+    return JsonResponse({'status': 'error', 'message': 'Invalid request method'}, status=400)
+
+def extract_audio(input_file,output_file):
+    file_extension = os.path.splitext(input_file)[1].lower()
+
+    if file_extension in (".mp4", ".avi", ".mkv"):
+        try:
+            ffmpeg_extract_audio(input_file, output_file)
+            print(f"Audio extracted from video and saved as {output_file}")
+            return True
+        except Exception as e:
+            print(f"(ffmpeg_extract_audio) Error: {e}")
+            return False
+    elif file_extension in (".mp3", ".m4a",".wav"):
+        print("Input file is already an audio file.")
+        return False
+    else:
+        print("Unsupported file format.")
+        return False
+    
+def transcribe_audio(file_path, temp_dir):
+    CHUNK_SIZE_MB = 1
+    CHUNK_SIZE_BYTES = int(CHUNK_SIZE_MB * 1024 * 1024 * 0.5)
+
+    try:
+        audio = AudioSegment.from_file(file_path)
+        # print(f"len audio:{len(audio)}")
+        # print(f"CHUNK_SIZE_BYTES:{(CHUNK_SIZE_BYTES)}")
+    except Exception as e:
+        # print(f"(transcribe_audio) An AudioSegmenterror occurred: {e}")
+        return None
+
+    chunks = [audio[i:i + CHUNK_SIZE_BYTES] for i in range(0, len(audio), CHUNK_SIZE_BYTES)]
+    
+    try:
+        transcripts = []
+        for i, chunk in enumerate(chunks):
+            # print(i)
+            fd, temp_audio_file = tempfile.mkstemp(suffix=".mp3", dir=temp_dir)
+            os.close(fd)  # Close the file descriptor
+            chunk.export(temp_audio_file, format="mp3")
+            # print(i)
+            with open(temp_audio_file, "rb") as audio_file:
+                transcript = openai.audio.transcriptions.create(
+                    model="whisper-1",
+                    file=audio_file,
+                    response_format="verbose_json",
+                    timestamp_granularities=["segment"]
+                )
+                transcripts.append(transcript)
+
+            os.remove(temp_audio_file)
+
+    except Exception as e:
+        print(f"(transcribe_audio) An error occurred: {e}")
+        return None
+    
+    # print(f"transcripts: {transcripts}")
+    
+    return transcripts
+
+def extract_and_concatenate_segments(transcripts):
+    concatenated_segments = []
+    max_id = 0
+    last_end_time = 0.0
+
+    for translation in transcripts:
+        for segment in translation.segments:
+            new_segment = {
+                "id": max_id,
+                "start": segment['start'],
+                "end": segment['end'],
+                "content": segment['text']
+            }
+            new_segment['start'] += last_end_time
+            new_segment['end'] += last_end_time
+            concatenated_segments.append(new_segment)
+            max_id += 1
+#            st.info(f"""new_segment(before):{new_segment}""")
+
+        if translation.segments:
+            last_end_time += translation.segments[-1]['end']
+  
+    return json.dumps(concatenated_segments, ensure_ascii=False, indent=4)

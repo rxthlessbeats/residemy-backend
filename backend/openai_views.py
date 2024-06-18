@@ -202,3 +202,21 @@ def text_summarization(request):
         return JsonResponse({'summary': summary})
 
     return JsonResponse({'error': 'This endpoint only supports POST requests.'}, status=405)
+
+###############################
+### openai functions
+###############################
+def generate_summary(base64Frames, transcript_data, extra_info="",languagestr="en"):
+    response = openai.chat.completions.create(
+        model="gpt-4o",
+        messages=[
+            {"role": "system", "content": f"""You are generating a video summary. Create a summary of the provided video and its transcript.If frame is silde, please specify it's a slide and extract the text from it. Respond in Markdown. The output language is in {languagestr}"""},
+            {"role": "user", "content": [
+                "These are the frames from the video.",
+                *map(lambda x: {"type": "image_url", "image_url": {"url": f'data:image/jpg;base64,{x}', "detail": "low"}}, base64Frames),
+                {"type": "text", "text": f"The audio transcription is: {transcript_data}. {extra_info}"}
+            ]}
+        ],
+        temperature=0,
+    )
+    return response.choices[0].message.content
