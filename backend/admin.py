@@ -9,7 +9,7 @@ class UserAdmin(BaseUserAdmin):
         (None, {'fields': ('line_user_id', 'password')}),
         ('Personal info', {'fields': ('display_name', 'email', 'profile_picture', 'status_message', 'gpt_photo_desc', 'user_level')}),
         # ('Permissions', {'fields': ('is_active', 'is_staff', 'is_superuser', 'groups', 'user_permissions')}),
-        ('Important dates', {'fields': ('last_login', 'date_joined')}),
+        ('Important dates', {'fields': ('last_joined', 'date_joined')}),
     )
     list_display = ('line_user_id', 'display_name', 'email', 'user_level')
     search_fields = ('line_user_id', 'display_name', 'email')

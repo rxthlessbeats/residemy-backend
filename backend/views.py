@@ -2,21 +2,27 @@
 import os
 import json
 import requests
-from datetime import datetime
+import django
+from datetime import datetime, timedelta
 import pandas as pd
 from dotenv import load_dotenv
+
+os.environ.setdefault("DJANGO_SETTINGS_MODULE", "backend.settings")
+django.setup()
 
 from .models import User, Document
 from django.http import JsonResponse
 from django.shortcuts import get_object_or_404
 from django.views.decorators.csrf import csrf_exempt
 from django.db.models import Q
+from django.utils import timezone
 from .utils import generate_pdf_thumbnail, generate_text_thumbnail, generate_video_thumbnail
 from .openai_views import generate_summary
 
 import base64
 import cv2
 from moviepy.editor import VideoFileClip
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
 import tempfile
 import openai
@@ -44,8 +50,13 @@ def update_user(request):
         gpt_photo_desc = data.get('gpt_photo_desc')
 
         user, created = User.objects.get_or_create(line_user_id=line_user_id)
-        gen_state = user.profile_picture != profile_picture or user.gpt_photo_desc == None
-        print('gen_state:', gen_state)
+        current_time = timezone.now()
+
+        if user.gpt_desc_expire_time is None or user.gpt_desc_expire_time < current_time:
+            gen_state = True
+        else:
+            gen_state = user.profile_picture != profile_picture or user.gpt_photo_desc is None
+        # print('gen_state:', gen_state)
 
         user.display_name = display_name
         user.profile_picture = profile_picture
@@ -53,8 +64,10 @@ def update_user(request):
         user.status_message = status_message
         user.access_token = access_token
         user.id_token = id_token
+        user.last_joined = current_time
         if gen_state:  # Only update gpt_photo_desc if we need to generate a new description
             user.gpt_photo_desc = gpt_photo_desc
+            user.gpt_desc_expire_time = current_time + timedelta(days=2)
         user.save()
 
         return JsonResponse({'status': 'success', 'gen_state': gen_state}, status=200)
@@ -164,9 +177,16 @@ def upload_document(request):
 
 @csrf_exempt
 def list_documents(request):
-    def fetch_documents(file_type, user_id=None, doc_id=None):
+    def fetch_documents(file_type=None, user_id=None, doc_id=None):
         if doc_id:
             document = get_object_or_404(Document, doc_id=doc_id)
+            if file_type and document.file_type != file_type:
+                return []
+            
+            # replace the name
+            if file_type == 'documents': file_type = 'Document'
+            elif file_type == 'videos': file_type = 'Video'
+
             doc_list = [{
                 f"{file_type} ID": document.doc_id,
                 f"{file_type} Title": document.doc_title, 
@@ -191,6 +211,13 @@ def list_documents(request):
                 documents = Document.objects.filter(user=user)
             else:
                 documents = Document.objects.all()
+
+            if file_type:
+                documents = documents.filter(file_type=file_type)
+
+            # replace the name
+            if file_type == 'documents': file_type = 'Document'
+            elif file_type == 'videos': file_type = 'Video'
 
             doc_list = []
             for doc in documents:
@@ -323,6 +350,25 @@ class ResearchPaper(LanceModel):
         display_date: int
         expire_date: int
 
+def fetch_embedding(row):
+    text = row['content']
+    embedding_response = requests.post(
+        f"{BACKEND_URI}/api/get_embedding/",
+        json={'text': text}
+    )
+    embedding = embedding_response.json().get('embedding')
+    return {
+        'vector': embedding,
+        'content': row['content'],
+        'doc_id': row['doc_id'],
+        'user_id': row['user_id'],
+        'file_type': row['file_type'],
+        'page_id': row['page'],
+        'chunk_id': row['id'],
+        'start': row['start'],
+        'end': row['end']
+    }
+
 @csrf_exempt
 def store_research_in_db(request):
     if request.method == 'POST':
@@ -340,34 +386,40 @@ def store_research_in_db(request):
         # Convert JSON data to DataFrame
         df = json_to_dataframe(json_data, doc_id=doc_id, user_id=user_id, file_type=file_type)
         tbl_research = vdb.create_table("Research_paper_table", schema=ResearchPaper.to_arrow_schema(), exist_ok=True)
-        print(df)
-        # Prepare records
-        records = []
+        # print(df)
 
-        for _, row in df.iterrows():
-            text = row['content']
-            embedding_response = requests.post(
-                f"{BACKEND_URI}/api/get_embedding/",
-                json={'text': text}
-            )
-            embedding = embedding_response.json().get('embedding')
-            records.append({
-                'vector': embedding,
-                'content': row['content'],
-                'doc_id': row['doc_id'],
-                'user_id': row['user_id'],
-                'file_type': row['file_type'],
-                'page_id': row['page'],
+        # with Pool() as pool:
+        #     records = pool.map(fetch_embedding, [row for _, row in df.iterrows()])
+
+        # records = []
+
+        # for _, row in df.iterrows():
+        #     text = row['content']
+        #     embedding_response = requests.post(
+        #         f"{BACKEND_URI}/api/get_embedding/",
+        #         json={'text': text}
+        #     )
+        #     embedding = embedding_response.json().get('embedding')
+        #     records.append({
+        #         'vector': embedding,
+        #         'content': row['content'],
+        #         'doc_id': row['doc_id'],
+        #         'user_id': row['user_id'],
+        #         'file_type': row['file_type'],
+        #         'page_id': row['page'],
                 
-                'chunk_id': row['id'],
-                'start': row['start'],
-                'end': row['end'],
+        #         'chunk_id': row['id'],
+        #         'start': row['start'],
+        #         'end': row['end'],
+        #     })
 
-                'display_date': display_date,
-                'expire_date': expire_date
-            })
+        with ThreadPoolExecutor(max_workers=os.cpu_count()) as executor:
+            futures = [executor.submit(fetch_embedding, row) for _, row in df.iterrows()]
+            records = [future.result() for future in as_completed(futures)]
 
         records_df = pd.DataFrame(records)
+        records_df['display_date'] = display_date
+        records_df['expire_date'] = expire_date
         tbl_research.add(records_df)
 
         return JsonResponse({'status': 'success'}, status=200)
