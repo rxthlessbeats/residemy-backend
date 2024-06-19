@@ -13,7 +13,6 @@ https://docs.djangoproject.com/en/4.2/ref/settings/
 from pathlib import Path
 import os
 from dotenv import load_dotenv
-import logging
 from django.core.management.commands.runserver import Command as runserver
 runserver.default_port = "5005"
 
@@ -25,6 +24,7 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 # See https://docs.djangoproject.com/en/4.2/howto/deployment/checklist/
 
 # SECURITY WARNING: keep the secret key used in production secret!
+load_dotenv(dotenv_path=".env.local", override=True)
 SECRET_KEY = os.getenv("DJANGO_SECRET")
 
 # SECURITY WARNING: don't run with debug turned on in production!
@@ -173,15 +173,30 @@ CMS_CONFIRM_VERSION4 = True
 
 CORS_ALLOW_ALL_ORIGINS = True
 CORS_ORIGIN_WHITELIST = [
-     'http://localhost:5003',
-     'http://192.168.50.26:5003',
-     'https://learn.residemy.org',
-     'https://admin.learn.residemy.org',
+    'http://localhost:5003',
+    'http://192.168.50.26:5003',
+    'http://192.168.50.36:5003',
+    'https://learn.residemy.org',
+    'https://admin.learn.residemy.org',
+    'http://stage-learn.residemy.org',
 ]
 
-ALLOWED_HOSTS = ['192.168.50.26', '127.0.0.1', 'learn.residemy.org', '0.0.0.0', 'admin.learn.residemy.org', '140.114.135.90']
+ALLOWED_HOSTS = [
+    '192.168.50.26', 
+    '192.168.50.36',
+    '127.0.0.1', 
+    '0.0.0.0', 
+    '140.114.135.90', 
+    'learn.residemy.org', 
+    'admin.learn.residemy.org', 
+    'stage-learn.residemy.org',
+]
 
-CSRF_TRUSTED_ORIGINS = ['https://learn.residemy.org', 'https://admin.learn.residemy.org']
+CSRF_TRUSTED_ORIGINS = [
+    'https://learn.residemy.org', 
+    'https://admin.learn.residemy.org', 
+    'http://stage-learn.residemy.org',
+]
 
 # Static files (CSS, JavaScript, Images)
 # https://docs.djangoproject.com/en/4.2/howto/static-files/
