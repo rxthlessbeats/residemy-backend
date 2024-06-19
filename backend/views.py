@@ -178,22 +178,30 @@ def upload_document(request):
 @csrf_exempt
 def list_documents(request):
     def fetch_documents(file_type=None, user_id=None, doc_id=None):
+        '''
+        This function returns all the instance if no parameters are specified.
+        If file_type is specified, then it will filter the file_type.
+        If user_id is specified, then it will filter the user_id.
+        If doc_id is specified, then it will filter the doc_id.
+        '''
+
+        # replace the name
+        if file_type == 'documents': fileType = 'Document'
+        elif file_type == 'videos': fileType = 'Video'
+        else: fileType = 'Instance'
+
         if doc_id:
             document = get_object_or_404(Document, doc_id=doc_id)
             if file_type and document.file_type != file_type:
                 return []
-            
-            # replace the name
-            if file_type == 'documents': file_type = 'Document'
-            elif file_type == 'videos': file_type = 'Video'
 
             doc_list = [{
-                f"{file_type} ID": document.doc_id,
-                f"{file_type} Title": document.doc_title, 
-                f"{file_type} URI": document.doc_uri,
-                f"{file_type} Type": document.doc_type,
-                f"{file_type} Description": document.doc_desc,
-                f"{file_type} Text": document.doc_text,
+                f"{fileType} ID": document.doc_id,
+                f"{fileType} Title": document.doc_title, 
+                f"{fileType} URI": document.doc_uri,
+                f"{fileType} Type": document.doc_type,
+                f"{fileType} Description": document.doc_desc,
+                f"{fileType} Text": document.doc_text,
                 "File Type": document.file_type,
                 "Create Date": document.doc_createdate,
                 "Revise Date": document.doc_revisedate,
@@ -201,9 +209,9 @@ def list_documents(request):
                 "Expire Date": document.expire_date,
                 "Share Flag": document.share_flag,
                 "Audit Flag": document.audit_flag,
-                f"{file_type} Meta": document.doc_meta,
-                f"{file_type} Location": document.doc_loc,
-                f"{file_type} MD5": document.doc_md5
+                f"{fileType} Meta": document.doc_meta,
+                f"{fileType} Location": document.doc_loc,
+                f"{fileType} MD5": document.doc_md5
             }]
         else:
             if user_id:
@@ -215,19 +223,15 @@ def list_documents(request):
             if file_type:
                 documents = documents.filter(file_type=file_type)
 
-            # replace the name
-            if file_type == 'documents': file_type = 'Document'
-            elif file_type == 'videos': file_type = 'Video'
-
             doc_list = []
             for doc in documents:
                 doc_list.append({
-                    f"{file_type} ID": doc.doc_id,
-                    f"{file_type} Title": doc.doc_title,
-                    f"{file_type} URI": doc.doc_uri,
-                    f"{file_type} Type": doc.doc_type,
-                    f"{file_type} Description": doc.doc_desc,
-                    f"{file_type} Text": doc.doc_text,
+                    f"{fileType} ID": doc.doc_id,
+                    f"{fileType} Title": doc.doc_title,
+                    f"{fileType} URI": doc.doc_uri,
+                    f"{fileType} Type": doc.doc_type,
+                    f"{fileType} Description": doc.doc_desc,
+                    f"{fileType} Text": doc.doc_text,
                     "File Type": doc.file_type,
                     "Create Date": doc.doc_createdate,
                     "Revise Date": doc.doc_revisedate,
@@ -235,9 +239,9 @@ def list_documents(request):
                     "Expire Date": doc.expire_date,
                     "Share Flag": doc.share_flag,
                     "Audit Flag": doc.audit_flag,
-                    f"{file_type} Meta": doc.doc_meta,
-                    f"{file_type} Location": doc.doc_loc,
-                    f"{file_type} MD5": doc.doc_md5
+                    f"{fileType} Meta": doc.doc_meta,
+                    f"{fileType} Location": doc.doc_loc,
+                    f"{fileType} MD5": doc.doc_md5
                 })
         
         return doc_list
