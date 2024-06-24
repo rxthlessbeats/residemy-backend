@@ -163,7 +163,7 @@ LANGUAGES = [
     # ('zh', u'中文'),
 ]
 
-TIME_ZONE = "UTC"
+TIME_ZONE = "Asia/Taipei"
 
 USE_I18N = True
 
@@ -171,14 +171,15 @@ USE_TZ = False
 
 CMS_CONFIRM_VERSION4 = True
 
-CORS_ALLOW_ALL_ORIGINS = True
-CORS_ORIGIN_WHITELIST = [
+# CORS_ALLOW_ALL_ORIGINS = True
+
+CORS_ALLOWED_ORIGINS = [
     'http://localhost:5003',
     'http://192.168.50.26:5003',
     'http://192.168.50.36:5003',
     'https://learn.residemy.org',
     'https://admin.learn.residemy.org',
-    'http://stage-learn.residemy.org',
+    'https://stage-learn.residemy.org',
 ]
 
 ALLOWED_HOSTS = [
@@ -195,7 +196,7 @@ ALLOWED_HOSTS = [
 CSRF_TRUSTED_ORIGINS = [
     'https://learn.residemy.org', 
     'https://admin.learn.residemy.org', 
-    'http://stage-learn.residemy.org',
+    'https://stage-learn.residemy.org',
 ]
 
 # Static files (CSS, JavaScript, Images)
@@ -211,3 +212,9 @@ DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 
 load_dotenv(dotenv_path='.env.local')
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
+
+# Maximum size (in bytes) that a request body may be
+DATA_UPLOAD_MAX_MEMORY_SIZE = 104857600000  # 100 MB (adjust as needed)
+
+# Maximum size (in bytes) that an uploaded file may be
+FILE_UPLOAD_MAX_MEMORY_SIZE = 104857600000  # 100 MB (adjust as needed)

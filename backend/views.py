@@ -524,6 +524,7 @@ def extract_text_from_video(request):
                 temp_output_file_name = temp_output_file.name
 
             if extract_audio(temp_video_file_path, temp_output_file_name):
+                print(f"temp_output_file_name: {temp_output_file_name}")
                 transcripts = extract_and_concatenate_segments(transcribe_audio(temp_output_file_name, temp_dir))
 
             os.remove(temp_video_file_path)
@@ -563,7 +564,8 @@ def transcribe_audio(file_path, temp_dir):
         # print(f"len audio:{len(audio)}")
         # print(f"CHUNK_SIZE_BYTES:{(CHUNK_SIZE_BYTES)}")
     except Exception as e:
-        # print(f"(transcribe_audio) An AudioSegmenterror occurred: {e}")
+        print(f"(transcribe_audio) An AudioSegmenterror occurred: {e}")
+        print(f"file_path: {file_path}")
         return None
 
     chunks = [audio[i:i + CHUNK_SIZE_BYTES] for i in range(0, len(audio), CHUNK_SIZE_BYTES)]
