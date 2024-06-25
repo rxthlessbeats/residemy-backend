@@ -3,6 +3,9 @@ from django.contrib.auth.models import AbstractUser, Group, Permission
 from django.utils import timezone
 
 class User(AbstractUser):
+    username = None
+    first_name = None
+    last_name = None
     line_user_id = models.CharField(max_length=255, unique=True, null=False, blank=False)
     profile_picture = models.URLField(max_length=200, blank=True, null=True)
     display_name = models.CharField(max_length=255, blank=True, null=True)

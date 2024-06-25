@@ -54,17 +54,27 @@ def update_user(request):
 
         if user.gpt_desc_expire_time is None or user.gpt_desc_expire_time < current_time:
             gen_state = True
+        elif user.profile_picture != profile_picture or user.gpt_photo_desc is None:
+            gen_state = True
         else:
-            gen_state = user.profile_picture != profile_picture or user.gpt_photo_desc is None
+            gen_state = False
         # print('gen_state:', gen_state)
 
-        user.display_name = display_name
-        user.profile_picture = profile_picture
-        user.email = email
-        user.status_message = status_message
-        user.access_token = access_token
-        user.id_token = id_token
+        if display_name:
+            user.display_name = display_name
+        if profile_picture:
+            user.profile_picture = profile_picture
+        if email:
+            user.email = email
+        if status_message:
+            user.status_message = status_message
+        if access_token:
+            user.access_token = access_token
+        if id_token:
+            user.id_token = id_token
         user.last_joined = current_time
+
+
         if gen_state:  # Only update gpt_photo_desc if we need to generate a new description
             user.gpt_photo_desc = gpt_photo_desc
             user.gpt_desc_expire_time = current_time + timedelta(days=2)
