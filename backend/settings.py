@@ -64,6 +64,7 @@ INSTALLED_APPS = [
     'djangocms_style',
     'djangocms_column',
     'django_cleanup.apps.CleanupConfig',
+    'csp',
 ]
 
 # AUTH_USER_MODEL = 'backend.User'
@@ -84,7 +85,7 @@ MIDDLEWARE = [
     'cms.middleware.language.LanguageCookieMiddleware',
     'corsheaders.middleware.CorsMiddleware',
     'allauth.account.middleware.AccountMiddleware',
-
+    'csp.middleware.CSPMiddleware',
 ]
 
 ROOT_URLCONF = "backend.urls"
@@ -197,6 +198,22 @@ CSRF_TRUSTED_ORIGINS = [
     'https://learn.residemy.org', 
     'https://admin.learn.residemy.org', 
     'https://stage-learn.residemy.org',
+]
+
+# CORS_ALLOW_HEADERS = [
+#     'X-Frame-Options',
+# ]
+
+# CORS_EXPOSE_HEADERS = [
+#     'X-Frame-Options',
+# ]
+
+# X_FRAME_OPTIONS = 'ALLOW-FROM https://admin.learn.residemy.org/'
+
+
+CSP_FRAME_ANCESTORS = [
+    "'self'", 
+    "https://stage-learn.residemy.org/"
 ]
 
 # Static files (CSS, JavaScript, Images)
