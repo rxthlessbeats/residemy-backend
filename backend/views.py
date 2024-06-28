@@ -300,16 +300,21 @@ def delete_document(request):
         user_id = data.get('user_id')
 
         user = get_object_or_404(User, line_user_id=user_id)
-        document = get_object_or_404(Document, doc_id=doc_id, user=user)
+        document = get_object_or_404(Document, doc_id=doc_id)
 
-        document.delete()
+        # Check if the user has the permission to delete the document
+        if user.user_level >= 200 or document.user == user:
+            document.delete()
 
-        vdb = lancedb.connect(LANCEDB_URI)
-        tbl_research = vdb.open_table("Research_paper_table")
-        if tbl_research:
-            tbl_research.delete(f"""doc_id = '{doc_id}'""")
+            vdb = lancedb.connect(LANCEDB_URI)
+            tbl_research = vdb.open_table("Research_paper_table")
+            if tbl_research:
+                tbl_research.delete(f"""doc_id = '{doc_id}'""")
 
-        return JsonResponse({'status': 'success'}, status=200)
+            return JsonResponse({'status': 'success'}, status=200)
+        else:
+            return JsonResponse({'error': 'Permission denied'}, status=403)
+    
     return JsonResponse({'error': 'Invalid request'}, status=400)
 
 @csrf_exempt
