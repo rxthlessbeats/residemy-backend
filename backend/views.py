@@ -405,32 +405,6 @@ def store_research_in_db(request):
         # Convert JSON data to DataFrame
         df = json_to_dataframe(json_data, doc_id=doc_id, user_id=user_id, file_type=file_type)
         tbl_research = vdb.create_table("Research_paper_table", schema=ResearchPaper.to_arrow_schema(), exist_ok=True)
-        # print(df)
-
-        # with Pool() as pool:
-        #     records = pool.map(fetch_embedding, [row for _, row in df.iterrows()])
-
-        # records = []
-
-        # for _, row in df.iterrows():
-        #     text = row['content']
-        #     embedding_response = requests.post(
-        #         f"{BACKEND_URI}/api/get_embedding/",
-        #         json={'text': text}
-        #     )
-        #     embedding = embedding_response.json().get('embedding')
-        #     records.append({
-        #         'vector': embedding,
-        #         'content': row['content'],
-        #         'doc_id': row['doc_id'],
-        #         'user_id': row['user_id'],
-        #         'file_type': row['file_type'],
-        #         'page_id': row['page'],
-                
-        #         'chunk_id': row['id'],
-        #         'start': row['start'],
-        #         'end': row['end'],
-        #     })
 
         with ThreadPoolExecutor(max_workers=os.cpu_count()) as executor:
             futures = [executor.submit(fetch_embedding, row) for _, row in df.iterrows()]
@@ -500,7 +474,7 @@ def process_meta_item(request):
         video.release()
 
         # Extract audio from video
-        audio_path = f"{os.path.dirname(video_path)}/audios/{video_path.split('.')[0]}.mp3"
+        audio_path = f"{os.path.dirname(video_path)}/audios/{os.path.basename(video_path)}"
         clip = VideoFileClip(video_path)
         clip.audio.write_audiofile(audio_path, bitrate="32k")
         clip.audio.close()
