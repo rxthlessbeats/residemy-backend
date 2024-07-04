@@ -188,6 +188,7 @@ ALLOWED_HOSTS = [
     '192.168.50.36',
     '127.0.0.1', 
     '0.0.0.0', 
+    'localhost',
     '140.114.135.90', 
     'learn.residemy.org', 
     'admin.learn.residemy.org', 
@@ -195,6 +196,7 @@ ALLOWED_HOSTS = [
 ]
 
 CSRF_TRUSTED_ORIGINS = [
+    'http://localhost:5003',
     'https://learn.residemy.org', 
     'https://admin.learn.residemy.org', 
     'https://stage-learn.residemy.org',
@@ -213,8 +215,13 @@ CSRF_TRUSTED_ORIGINS = [
 
 CSP_FRAME_ANCESTORS = [
     "'self'", 
-    "https://stage-learn.residemy.org/"
+    "https://stage-learn.residemy.org/",
+    "http://localhost:5003/",
 ]
+
+CSP_DEFAULT_SRC = ("'self'",)
+CSP_STYLE_SRC = ("'self'", "'unsafe-inline'")
+CSP_SCRIPT_SRC = ("'self'", "'unsafe-inline'")
 
 # Static files (CSS, JavaScript, Images)
 # https://docs.djangoproject.com/en/4.2/howto/static-files/

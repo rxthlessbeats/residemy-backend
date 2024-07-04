@@ -14,7 +14,7 @@ class User(AbstractUser):
     access_token = models.CharField(max_length=1000, blank=True, null=True)  
     id_token = models.CharField(max_length=1000, blank=True, null=True)      
     gpt_photo_desc = models.TextField(blank=True, null=True) 
-    user_level = models.IntegerField(blank=True, null=True, default=0)
+    user_level = models.IntegerField(blank=True, null=True, default=1)
     gpt_desc_expire_time = models.DateTimeField(blank=True, null=True) 
     last_joined = models.DateTimeField(blank=True, null=True)
     date_joined = models.DateTimeField(default=timezone.now)

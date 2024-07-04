@@ -29,6 +29,7 @@ urlpatterns = [
     path('api/get_embedding/', openai_views.get_embedding, name='get_embedding'),
     path('api/text_summarization/', openai_views.text_summarization, name='text_summarization'),
     path('api/generate_description/', openai_views.generate_description, name='generate_description'),
+    path('api/generate_response/', openai_views.generate_response, name='generate_response'),
 
     path('accounts/', include('allauth.urls')),
     path('cms/', include('cms.urls')),  # Include Django CMS URLs

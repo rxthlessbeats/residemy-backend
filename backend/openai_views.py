@@ -203,6 +203,52 @@ def text_summarization(request):
 
     return JsonResponse({'error': 'This endpoint only supports POST requests.'}, status=405)
 
+
+@csrf_exempt
+def generate_response(request):
+    if request.method == 'POST':
+        data = json.loads(request.body)
+        
+        context = data.get('context', '')
+        messages = data.get('messages', '')
+        model = data.get('model', 'gpt-3.5-turbo')
+        user_id = data.get('user_id', None)
+        obj = data.get('object', None)
+
+        # Process the dictionary object if provided
+        object_processing_result = None
+        if obj:
+            object_processing_result = process_dictionary_object(obj)
+            if "not a dictionary" in object_processing_result:
+                object_processing_result = ""
+
+        # Prepare the message payload with system prompts
+        messages_payload = [
+            {"role": "system", "content": f"{context}"},
+            {"role": "user", "content": f"{messages}"},
+        ]
+
+        try:
+            # Make a request to OpenAI using the Chat Completion endpoint
+            completions = client.chat.completions.create(
+                model=model,
+                messages=messages_payload,
+                temperature=0.0
+            )
+
+            # Extract the response content and the token usage
+            response_content = completions.choices[0].message.content
+            tokens_used = completions.usage.total_tokens
+
+            ### TODO: update token used for user db###
+
+            return JsonResponse({'response_content': response_content})
+
+        except Exception as e:
+            return JsonResponse({'error': str(e)}, status=500)
+
+    return JsonResponse({'error': 'Invalid request'}, status=400)
+
 ###############################
 ### openai functions
 ###############################
@@ -220,3 +266,10 @@ def generate_summary(base64Frames, transcript_data, extra_info="",languagestr="e
         temperature=0,
     )
     return response.choices[0].message.content
+
+def process_dictionary_object(obj):
+    # Process the dictionary object and perform some work
+    # This is a placeholder function that you would replace with actual logic
+    if isinstance(obj, dict):
+        return "Processed dictionary object successfully."
+    return "Object is not a dictionary."

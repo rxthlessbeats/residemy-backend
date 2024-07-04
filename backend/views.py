@@ -321,17 +321,22 @@ def delete_document(request):
 def display_documents(request):
     if request.method == 'POST':
         data = json.loads(request.body)
-        amount = data.get('amount', 3)
+        amount = data.get('amount', None)
 
         try:
             # Get the current date and time
             current_datetime = datetime.now()
 
             # Retrieve three news items within display_date and expire_date
-            documents = Document.objects.filter(
+            documents_query = Document.objects.filter(
                 (Q(display_date__isnull=True) | Q(display_date__lte=current_datetime)),
                 (Q(expire_date__isnull=True) | Q(expire_date__gte=current_datetime))
-            ).order_by('?')[:amount][:amount]
+            )
+
+            if amount is not None:
+                documents = documents_query.order_by('?')[:amount]
+            else:
+                documents = documents_query.order_by('doc_createdate')
 
             if documents.exists():
                 news_items = {}
@@ -339,7 +344,8 @@ def display_documents(request):
                     news_item = {
                         # "Document ID": doc.doc_id,
                         "Title": doc.doc_title,
-                        "Description": doc.doc_desc
+                        "Description": doc.doc_desc,
+                        "Thumbnail": f"{BACKEND_URI}/{doc.thumbnail.url}" if doc.thumbnail else ""
                     }
                     news_items[doc.doc_id] = news_item
                 return JsonResponse({'status': 'success', 'news_items': news_items}, status=200)
@@ -348,6 +354,8 @@ def display_documents(request):
 
         except Exception as e:
             return JsonResponse({'status': 'error', 'message': str(e)}, status=500)
+        
+    return JsonResponse({'error': 'Invalid request'}, status=400)
 
 ########################
 import lancedb
