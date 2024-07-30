@@ -119,11 +119,18 @@ DATABASES = {
     "default": {
         "ENGINE": "django.db.backends.sqlite3",
         "NAME": f"{BASE_DIR}/db.sqlite3",
+        "ATOMIC_REQUESTS": True,
+        "TIME_ZONE": "Asia/Taipei",
+        'CONN_HEALTH_CHECKS': True,
+        'CONN_MAX_AGE': None,
     }
 }
 
 MEDIA_ROOT = os.path.join(BASE_DIR, 'master')
 MEDIA_URL = '/master/'
+
+USERDBS_ROOT = os.path.join(BASE_DIR, 'userdbs')
+USERDBS_URL = '/userdbs/'
 
 THUMBNAIL_HIGH_RESOLUTION = True
 
@@ -164,11 +171,11 @@ LANGUAGES = [
     # ('zh', u'中文'),
 ]
 
+USE_TZ = True
+
 TIME_ZONE = "Asia/Taipei"
 
 USE_I18N = True
-
-USE_TZ = False
 
 CMS_CONFIRM_VERSION4 = True
 

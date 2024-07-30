@@ -6,11 +6,17 @@ import django
 from datetime import datetime, timedelta
 import pandas as pd
 from dotenv import load_dotenv
+from django.db import connections, transaction, migrations
+from django.db.migrations.recorder import MigrationRecorder
+from django.db.migrations.loader import MigrationLoader
+from django.db.utils import OperationalError
+from django.core.management import call_command
+from django.conf import settings
 
 os.environ.setdefault("DJANGO_SETTINGS_MODULE", "backend.settings")
 django.setup()
 
-from .models import User, Document
+from .models import User, Document, UserDocument
 from django.http import JsonResponse
 from django.shortcuts import get_object_or_404
 from django.views.decorators.csrf import csrf_exempt
@@ -32,6 +38,7 @@ from moviepy.video.io.ffmpeg_tools import ffmpeg_extract_audio
 load_dotenv(dotenv_path='.env.local', override=True)
 BACKEND_URI = os.getenv("BACKEND_URI")
 LANCEDB_URI = 'master/lancedb/'
+BASE_DIR = settings.BASE_DIR
 
 ###################
 # user table
@@ -275,10 +282,21 @@ def update_document(request):
         doc_desc = data.get('doc_desc')
         doc_text = data.get('doc_text')
         doc_meta = data.get('doc_meta')
+        user_id = data.get('user_id', None)
         display_date = data.get('display_date')
         expire_date = data.get('expire_date')
 
-        document = get_object_or_404(Document, doc_id=doc_id)
+        if user_id:
+            db_name = user_database_connection(user_id)
+            connection = connections[db_name]
+
+            with transaction.atomic(using=db_name):
+                apply_migrations_to_user_db(connection, db_name)
+
+                document = get_object_or_404(UserDocument.objects.using(db_name), doc_id=doc_id)
+        else:
+            document = get_object_or_404(Document, doc_id=doc_id)
+
         if doc_title: document.doc_title = doc_title
         if doc_desc: document.doc_desc = doc_desc
         if doc_text: document.doc_text = doc_text
@@ -298,22 +316,38 @@ def delete_document(request):
         data = json.loads(request.body)
         doc_id = data.get('doc_id')
         user_id = data.get('user_id')
+        user_doc = data.get('user_doc', False)
 
-        user = get_object_or_404(User, line_user_id=user_id)
-        document = get_object_or_404(Document, doc_id=doc_id)
+        if user_doc:
+            db_name = user_database_connection(user_id)
+            document = get_object_or_404(UserDocument.objects.using(db_name), doc_id=doc_id)
 
-        # Check if the user has the permission to delete the document
-        if user.user_level >= 200 or document.user == user:
             document.delete()
 
-            vdb = lancedb.connect(LANCEDB_URI)
+            vdb = lancedb.connect(f'userdbs/{user_id}/lancedb')
             tbl_research = vdb.open_table("Research_paper_table")
             if tbl_research:
                 tbl_research.delete(f"""doc_id = '{doc_id}'""")
 
             return JsonResponse({'status': 'success'}, status=200)
+
+
         else:
-            return JsonResponse({'error': 'Permission denied'}, status=403)
+            user = get_object_or_404(User, line_user_id=user_id)
+            document = get_object_or_404(Document, doc_id=doc_id)
+
+            # Check if the user has the permission to delete the document
+            if user.user_level >= 200 or document.user == user:
+                document.delete()
+
+                vdb = lancedb.connect(LANCEDB_URI)
+                tbl_research = vdb.open_table("Research_paper_table")
+                if tbl_research:
+                    tbl_research.delete(f"""doc_id = '{doc_id}'""")
+
+                return JsonResponse({'status': 'success'}, status=200)
+            else:
+                return JsonResponse({'error': 'Permission denied'}, status=403)
     
     return JsonResponse({'error': 'Invalid request'}, status=400)
 
@@ -322,16 +356,45 @@ def display_documents(request):
     if request.method == 'POST':
         data = json.loads(request.body)
         amount = data.get('amount', None)
+        user_doc = data.get('user_doc', False)
+        user_id = data.get('user_id')
+
+        # Get the current date and time
+        current_datetime = datetime.now()
 
         try:
-            # Get the current date and time
-            current_datetime = datetime.now()
+            if user_doc:
+                if not user_id:
+                    return JsonResponse({'error': 'user_id is required for user documents'}, status=400)
 
-            # Retrieve three news items within display_date and expire_date
-            documents_query = Document.objects.filter(
-                (Q(display_date__isnull=True) | Q(display_date__lte=current_datetime)),
-                (Q(expire_date__isnull=True) | Q(expire_date__gte=current_datetime))
-            )
+                db_name = user_database_connection(user_id)
+
+                connection = connections[db_name]
+                # with connection.cursor() as cursor:
+                #     cursor.execute('PRAGMA foreign_keys = OFF;')
+
+                with transaction.atomic(using=db_name):
+                    apply_migrations_to_user_db(connection, db_name)
+                    # with connection.schema_editor() as schema_editor:
+                    #     if not schema_editor.connection.introspection.table_names():
+                    #         schema_editor.create_model(UserDocument)
+                    #     else:
+                    #         # apply_migrations_to_user_db(connection, db_name)
+                    #         pass
+
+                    documents_query = UserDocument.objects.using(db_name).filter(
+                        (Q(display_date__isnull=True) | Q(display_date__lte=current_datetime)),
+                        (Q(expire_date__isnull=True) | Q(expire_date__gte=current_datetime))
+                    )
+
+                # with connection.cursor() as cursor:
+                #     cursor.execute('PRAGMA foreign_keys = ON;')
+
+            else:
+                documents_query = Document.objects.filter(
+                    (Q(display_date__isnull=True) | Q(display_date__lte=current_datetime)),
+                    (Q(expire_date__isnull=True) | Q(expire_date__gte=current_datetime))
+                )
 
             if amount is not None:
                 documents = documents_query.order_by('?')[:amount]
@@ -344,6 +407,7 @@ def display_documents(request):
                     news_item = {
                         # "Document ID": doc.doc_id,
                         "Title": doc.doc_title,
+                        # "Description": doc.doc_desc.split('\n', 1)[0],  # Split by new line and get the first part
                         "Description": doc.doc_desc,
                         "Thumbnail": f"{BACKEND_URI}/{doc.thumbnail.url}" if doc.thumbnail else ""
                     }
@@ -353,11 +417,262 @@ def display_documents(request):
                 return JsonResponse({'status': 'success', 'news_items': {}}, status=200)
 
         except Exception as e:
+            print(f"Display document error: {e}")
             return JsonResponse({'status': 'error', 'message': str(e)}, status=500)
         
     return JsonResponse({'error': 'Invalid request'}, status=400)
 
 ########################
+# user documents
+def user_database_connection(user_id):
+    db_name = f'userdb_{user_id}'
+    db_dir = os.path.join(settings.BASE_DIR, 'userdbs', f'{user_id}')
+    db_path = os.path.join(db_dir, f'{user_id}.sqlite3')
+    os.makedirs(db_dir, exist_ok=True)
+
+    connections.databases[db_name] = {
+        'ENGINE': 'django.db.backends.sqlite3',
+        'NAME': db_path,
+        'ATOMIC_REQUESTS': False,
+        'TIME_ZONE': 'Asia/Taipei',
+        'AUTOCOMMIT': True,
+        'CONN_HEALTH_CHECKS': True,
+        'CONN_MAX_AGE': 0, # Use 0 to close database connections at the end of each request, None for unlimited persistent database connections.
+        'OPTIONS': {},
+    }
+    return db_name
+
+def apply_migrations_to_user_db(connection, db_name):
+
+    # create table if not created
+    try:
+        # with connection.schema_editor() as schema_editor:
+        #     if not schema_editor.connection.introspection.table_names():
+        #         schema_editor.create_model(UserDocument)
+
+        with connection.cursor() as cursor:
+            cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='django_migrations';")
+            table_exists = cursor.fetchone()
+
+        # print(f"the table:{table_exists}")
+
+        if not table_exists:
+            # call_command('makemigrations', 'backend', '--noinput')
+            call_command('migrate', 'backend', '--database', db_name, '--noinput')
+    
+    except OperationalError as e:
+        print(f"OperationalError: {e}")
+        # call_command('migrate', '--database', db_name, '--noinput')
+
+    migration_recorder = MigrationRecorder(connection)
+    applied_migrations = set(migration_recorder.applied_migrations())
+
+    loader = MigrationLoader(connection)
+    graph = loader.graph
+    leaf_nodes = set(graph.leaf_nodes())
+
+    unapplied_migrations = leaf_nodes - applied_migrations
+    unapplied_backend_migrations = {m for m in unapplied_migrations if m[0] == 'backend'}
+    # print(f"unapplied_migrations:{unapplied_backend_migrations}")
+
+    if unapplied_backend_migrations:
+        # call_command('makemigrations', 'backend', '--noinput')
+        call_command('migrate', 'backend', '--database', db_name, '--noinput')
+
+@csrf_exempt
+def upload_user_document(request):
+    if request.method == 'POST':
+        user_id = request.POST.get('user_id')
+        doc_id = request.POST.get('doc_id')
+        doc_title = request.POST.get('doc_title')
+        doc_desc = request.POST.get('doc_desc')
+        doc_type = request.POST.get('doc_type')
+        doc_md5 = request.POST.get('doc_md5')
+        doc_loc = request.POST.get('doc_loc')
+        doc_uri = request.POST.get('doc_uri')
+        doc_text = request.POST.get('doc_text')
+        file_type = request.POST.get('file_type')
+        display_date = request.POST.get('display_date')
+        expire_date = request.POST.get('expire_date')
+        file = request.FILES['file']
+
+        db_name = user_database_connection(user_id)
+        connection = connections[db_name]
+        # with connection.cursor() as cursor:
+        #     cursor.execute('PRAGMA foreign_keys = OFF;')
+
+        with transaction.atomic(using=db_name):
+            apply_migrations_to_user_db(connection, db_name)
+            # with connection.schema_editor() as schema_editor:
+                # if not schema_editor.connection.introspection.table_names():
+                #     schema_editor.create_model(UserDocument)
+                # else:
+                #     # apply_migrations_to_user_db(connection, db_name)
+                #     pass
+
+            document, created = UserDocument.objects.using(db_name).get_or_create(doc_id=doc_id, defaults={
+                'user_id': user_id,
+                'doc_title': doc_title,
+                'doc_desc': doc_desc,
+                'doc_type': doc_type,
+                'doc_md5': doc_md5,
+                'doc_loc': doc_loc,
+                'doc_uri': doc_uri,
+                'doc_text': doc_text,
+                'file_type': file_type,
+                'display_date': display_date,
+                'expire_date': expire_date,
+                'file': file,
+            })
+
+            if not created:
+                document.user_id = user_id
+                document.doc_title = doc_title
+                document.doc_desc = doc_desc
+                document.doc_type = doc_type
+                document.doc_md5 = doc_md5
+                document.doc_loc = doc_loc
+                document.doc_uri = doc_uri
+                document.doc_text = doc_text
+                document.file_type = file_type
+                document.display_date = display_date
+                document.expire_date = expire_date
+                document.file.save(file.name, file)
+                document.save()
+
+            file.seek(0)
+            # Generate and save the thumbnail
+            if doc_type == 'pdf':
+                # Generate thumbnail for PDF
+                thumbnail = generate_pdf_thumbnail(file, doc_id)
+                document.thumbnail.save(thumbnail.name, thumbnail)
+                document.save()
+            elif doc_type == 'txt':
+                # Generate thumbnail for text file
+                try:
+                    text_preview = doc_text[:500] 
+                except:
+                    text_preview = doc_text[:]
+                thumbnail = generate_text_thumbnail(text_preview, doc_id)
+                document.thumbnail.save(thumbnail.name, thumbnail)
+                document.save()
+            elif file_type == 'videos':
+                thumbnail = generate_video_thumbnail(doc_uri, doc_id)
+                if thumbnail:
+                    document.thumbnail.save(thumbnail.name, thumbnail)
+                    document.save()
+
+        # with connection.cursor() as cursor:
+        #     cursor.execute('PRAGMA foreign_keys = ON;')
+
+        return JsonResponse({'status': 'success', 'doc_id': document.doc_id}, status=200)
+    
+    return JsonResponse({'error': 'Invalid request'}, status=400)
+
+
+@csrf_exempt
+def list_user_documents(request):
+    def fetch_documents(user_id, file_type=None, doc_id=None):
+        '''
+        This function returns all the instance if no parameters are specified.
+        If file_type is specified, then it will filter the file_type.
+        If doc_id is specified, then it will filter the doc_id.
+        '''
+
+        db_name = user_database_connection(user_id)
+        # print(db_name)
+
+        connection = connections[db_name]
+        # with connection.cursor() as cursor:
+        #     cursor.execute('PRAGMA foreign_keys = OFF;')
+
+        try:
+            with transaction.atomic(using=db_name):
+                apply_migrations_to_user_db(connection, db_name)
+                # with connection.schema_editor() as schema_editor:
+                    # if not schema_editor.connection.introspection.table_names():
+                        # schema_editor.create_model(UserDocument)
+                    # else:
+                        # apply_migrations_to_user_db(connection, db_name)
+                        # pass
+
+                # replace the name
+                if file_type == 'documents': fileType = 'Document'
+                elif file_type == 'videos': fileType = 'Video'
+                else: fileType = 'Instance'
+
+                documents_query = UserDocument.objects.using(db_name).all()
+
+                if doc_id:
+                    document = documents_query.filter(doc_id=doc_id)
+                    if file_type and documents_query.exists() and documents_query.first().file_type != file_type:
+                        return []
+
+                    document = documents_query.first()
+
+                    doc_list = [{
+                        f"{fileType} ID": document.doc_id,
+                        f"{fileType} Title": document.doc_title, 
+                        f"{fileType} URI": document.doc_uri,
+                        f"{fileType} Type": document.doc_type,
+                        f"{fileType} Description": document.doc_desc,
+                        f"{fileType} Text": document.doc_text,
+                        "File Type": document.file_type,
+                        "Create Date": document.doc_createdate,
+                        "Revise Date": document.doc_revisedate,
+                        "Display Date": document.display_date,
+                        "Expire Date": document.expire_date,
+                        "Share Flag": document.share_flag,
+                        "Audit Flag": document.audit_flag,
+                        f"{fileType} Meta": document.doc_meta,
+                        f"{fileType} Location": document.doc_loc,
+                        f"{fileType} MD5": document.doc_md5
+                    }]
+                else:
+                    if file_type:
+                        documents_query = documents_query.filter(file_type=file_type)
+
+                    doc_list = []
+                    for doc in documents_query:
+                        doc_list.append({
+                            f"{fileType} ID": doc.doc_id,
+                            f"{fileType} Title": doc.doc_title,
+                            f"{fileType} URI": doc.doc_uri,
+                            f"{fileType} Type": doc.doc_type,
+                            f"{fileType} Description": doc.doc_desc,
+                            f"{fileType} Text": doc.doc_text,
+                            "File Type": doc.file_type,
+                            "Create Date": doc.doc_createdate,
+                            "Revise Date": doc.doc_revisedate,
+                            "Display Date": doc.display_date,
+                            "Expire Date": doc.expire_date,
+                            "Share Flag": doc.share_flag,
+                            "Audit Flag": doc.audit_flag,
+                            f"{fileType} Meta": doc.doc_meta,
+                            f"{fileType} Location": doc.doc_loc,
+                            f"{fileType} MD5": doc.doc_md5
+                        })
+
+            return doc_list
+        
+            # with connection.cursor() as cursor:
+            #     cursor.execute('PRAGMA foreign_keys = ON;')
+
+        except Exception as e:
+            return JsonResponse({'status': 'error', 'error': e}, status=500)
+            
+    if request.method == 'POST':
+        data = json.loads(request.body)
+        user_id = data.get('user_id')
+        doc_id = data.get('doc_id')
+        file_type = data.get('file_type')
+        documents = fetch_documents(user_id, file_type, doc_id)
+        return JsonResponse({'status': 'success', 'documents': documents}, status=200)
+    
+    return JsonResponse({'error': 'Invalid request'}, status=400)
+
+###############################
+
 import lancedb
 from lancedb.pydantic import Vector, LanceModel
 from .utils import datetime_to_timestamp, json_to_dataframe
@@ -404,11 +719,15 @@ def store_research_in_db(request):
         user_id = data.get('user_id')
         doc_id = data.get('doc_id')
         file_type = data.get('file_type')
+        user_doc = data.get('user_doc', False)
         display_date = datetime_to_timestamp(datetime.fromisoformat(data.get('display_date')))
         expire_date = datetime_to_timestamp(datetime.fromisoformat(data.get('expire_date')))
 
         # Connect to LanceDB
-        vdb = lancedb.connect(LANCEDB_URI)
+        if user_doc == False:
+            vdb = lancedb.connect(LANCEDB_URI)
+        else:
+            vdb = lancedb.connect(f'userdbs/{user_id}/lancedb')
 
         # Convert JSON data to DataFrame
         df = json_to_dataframe(json_data, doc_id=doc_id, user_id=user_id, file_type=file_type)
@@ -617,3 +936,5 @@ def extract_and_concatenate_segments(transcripts):
             last_end_time += translation.segments[-1]['end']
   
     return json.dumps(concatenated_segments, ensure_ascii=False, indent=4)
+
+################################

@@ -1,6 +1,8 @@
 from django.db import models
 from django.contrib.auth.models import AbstractUser, Group, Permission
 from django.utils import timezone
+import os 
+from .custom_storage import UserDocumentStorage
 
 class User(AbstractUser):
     username = None
@@ -51,6 +53,39 @@ class Document(models.Model):
     doc_revisedate = models.DateTimeField(auto_now=True)
     file = models.FileField(upload_to=documents_upload_uri, null=True)
     thumbnail = models.ImageField(upload_to=image_upload_uri, blank=True, null=True)
+
+    def __str__(self):
+        return self.doc_title
+    
+def user_documents_upload_uri(instance, filename):
+    # user_id = instance.user.line_user_id
+    return os.path.join(instance.user_id, instance.file_type, f'{instance.doc_id}.{instance.doc_type}')
+    
+def user_image_upload_uri(instance, filename):
+    # user_id = instance.user.line_user_id
+    return os.path.join(instance.user_id, instance.file_type, 'thumbnails', f'{instance.doc_id}_thumbnail.png')
+
+class UserDocument(models.Model):
+    doc_id = models.CharField(max_length=100, editable=False, unique=True, primary_key=True)
+    # user = models.ForeignKey(User, on_delete=models.CASCADE)
+    user_id = models.CharField(max_length=255, null=False, blank=False)
+    doc_type = models.CharField(max_length=10)
+    doc_loc = models.CharField(max_length=255)
+    doc_uri = models.CharField(max_length=255)
+    doc_title = models.CharField(max_length=255)
+    doc_desc = models.TextField()
+    doc_md5 = models.CharField(max_length=255)
+    doc_text = models.TextField(blank=True, null=True)
+    doc_meta = models.TextField(blank=True, null=True)
+    file_type = models.CharField(max_length=255, blank=True, null=True)
+    share_flag = models.BooleanField(default=False)
+    audit_flag = models.BooleanField(default=False)
+    display_date = models.DateTimeField(null=True, blank=True)
+    expire_date = models.DateTimeField(null=True, blank=True)
+    doc_createdate = models.DateTimeField(auto_now_add=True)
+    doc_revisedate = models.DateTimeField(auto_now=True)
+    file = models.FileField(upload_to=user_documents_upload_uri, storage=UserDocumentStorage(), null=True)
+    thumbnail = models.ImageField(upload_to=user_image_upload_uri, storage=UserDocumentStorage(), blank=True, null=True)
 
     def __str__(self):
         return self.doc_title

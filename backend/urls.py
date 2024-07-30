@@ -23,6 +23,8 @@ urlpatterns = [
     path('api/display_documents/', views.display_documents, name='display_documents'),
     path('api/process_meta_item/', views.process_meta_item, name='process_meta_item'),
     path('api/extract_text_from_video/', views.extract_text_from_video, name='extract_text_from_video'),
+    path('api/upload_user_document/', views.upload_user_document, name='upload_user_document'),
+    path('api/list_user_documents/', views.list_user_documents, name='list_user_documents'),
 
     # openai 
     path('api/ask_question_about_image/', openai_views.ask_question_about_image, name='ask_question_about_image'),
@@ -35,5 +37,6 @@ urlpatterns = [
     path('cms/', include('cms.urls')),  # Include Django CMS URLs
     
 ] + static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT) \
-+ static(settings.STATIC_URL, document_root=settings.STATIC_ROOT)
++ static(settings.STATIC_URL, document_root=settings.STATIC_ROOT) \
++ static(settings.USERDBS_URL, document_root=settings.USERDBS_ROOT)
 
