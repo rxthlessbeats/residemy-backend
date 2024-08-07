@@ -223,6 +223,7 @@ CSRF_TRUSTED_ORIGINS = [
 CSP_FRAME_ANCESTORS = [
     "'self'", 
     "https://stage-learn.residemy.org/",
+    "https://learn.residemy.org/",
     "http://localhost:5003/",
 ]
 

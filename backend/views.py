@@ -290,10 +290,17 @@ def update_document(request):
             db_name = user_database_connection(user_id)
             connection = connections[db_name]
 
+            with connection.cursor() as cursor:
+                cursor.execute('PRAGMA foreign_keys = OFF;')
+
             with transaction.atomic(using=db_name):
                 apply_migrations_to_user_db(connection, db_name)
 
                 document = get_object_or_404(UserDocument.objects.using(db_name), doc_id=doc_id)
+
+            with connection.cursor() as cursor:
+                cursor.execute('PRAGMA foreign_keys = ON;')
+                
         else:
             document = get_object_or_404(Document, doc_id=doc_id)
 
@@ -370,8 +377,8 @@ def display_documents(request):
                 db_name = user_database_connection(user_id)
 
                 connection = connections[db_name]
-                # with connection.cursor() as cursor:
-                #     cursor.execute('PRAGMA foreign_keys = OFF;')
+                with connection.cursor() as cursor:
+                    cursor.execute('PRAGMA foreign_keys = OFF;')
 
                 with transaction.atomic(using=db_name):
                     apply_migrations_to_user_db(connection, db_name)
@@ -387,8 +394,8 @@ def display_documents(request):
                         (Q(expire_date__isnull=True) | Q(expire_date__gte=current_datetime))
                     )
 
-                # with connection.cursor() as cursor:
-                #     cursor.execute('PRAGMA foreign_keys = ON;')
+                with connection.cursor() as cursor:
+                    cursor.execute('PRAGMA foreign_keys = ON;')
 
             else:
                 documents_query = Document.objects.filter(
@@ -498,8 +505,8 @@ def upload_user_document(request):
 
         db_name = user_database_connection(user_id)
         connection = connections[db_name]
-        # with connection.cursor() as cursor:
-        #     cursor.execute('PRAGMA foreign_keys = OFF;')
+        with connection.cursor() as cursor:
+            cursor.execute('PRAGMA foreign_keys = OFF;')
 
         with transaction.atomic(using=db_name):
             apply_migrations_to_user_db(connection, db_name)
@@ -562,8 +569,8 @@ def upload_user_document(request):
                     document.thumbnail.save(thumbnail.name, thumbnail)
                     document.save()
 
-        # with connection.cursor() as cursor:
-        #     cursor.execute('PRAGMA foreign_keys = ON;')
+        with connection.cursor() as cursor:
+            cursor.execute('PRAGMA foreign_keys = ON;')
 
         return JsonResponse({'status': 'success', 'doc_id': document.doc_id}, status=200)
     
@@ -583,8 +590,8 @@ def list_user_documents(request):
         # print(db_name)
 
         connection = connections[db_name]
-        # with connection.cursor() as cursor:
-        #     cursor.execute('PRAGMA foreign_keys = OFF;')
+        with connection.cursor() as cursor:
+            cursor.execute('PRAGMA foreign_keys = OFF;')
 
         try:
             with transaction.atomic(using=db_name):
@@ -655,8 +662,8 @@ def list_user_documents(request):
 
             return doc_list
         
-            # with connection.cursor() as cursor:
-            #     cursor.execute('PRAGMA foreign_keys = ON;')
+            with connection.cursor() as cursor:
+                cursor.execute('PRAGMA foreign_keys = ON;')
 
         except Exception as e:
             return JsonResponse({'status': 'error', 'error': e}, status=500)
