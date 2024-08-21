@@ -8,10 +8,12 @@ import json
 import openai
 import os
 import logging
-import textract
 from .utils import lang_detect, calculate_tokens
+import lancedb
 
 client = openai.OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+os.environ["OPENAI_API_KEY"] = os.getenv("OPENAI_API_KEY")
+LANCEDB_URI = "master/lancedb/"
 
 @csrf_exempt
 @require_POST
@@ -171,60 +173,78 @@ def generate_description(request):
             return JsonResponse({'error': f"An error occurred while generating the description: {e}"}, status=500)
     return JsonResponse({'error': 'Invalid request method'}, status=400)
 
-@csrf_exempt
-def text_summarization(request):
-    if request.method == 'POST':
-        # Check if the request has a file in it
-        if 'document' in request.FILES:
-            document = request.FILES['document']
-            # Assuming the document is a PDF or a TXT file
-            text_to_summarize = textract.process(document.temporary_file_path()).decode('utf-8')
-        else:
-            # Load JSON data from request body if no file is present
-            print("Received request body:", request.body)
-            data = json.loads(request.body)
-            text_to_summarize = data.get('text', None)
+# from llama_index.core import VectorStoreIndex
+# from llama_index.core.chat_engine import CondensePlusContextChatEngine
+# from llama_index.core.indices.vector_store import VectorIndexRetriever
+# from llama_index.core.memory import ChatMemoryBuffer
+# from llama_index.llms.openai import OpenAI
+# from llama_index.embeddings.openai import OpenAIEmbedding
+# from llama_index.vector_stores.lancedb import LanceDBVectorStore
 
-        if not text_to_summarize:
-            return JsonResponse({'error': 'No text provided for summarization.'}, status=400)
+# def _get_memory(chat_store_key="foobar-default"):
+#     return ChatMemoryBuffer.from_defaults(chat_store_key=chat_store_key)
 
-        # Use OpenAI API to summarize the text
-        response = client.chat.completions.create(model="gpt-4-turbo",  # Ensure this is the correct model you have access to
-        messages=[
-            {"role": "system", "content": "You are a helpful assistant."},
-            {"role": "user", "content": f"Summarize the following text: {text_to_summarize}"}
-        ])
 
-        # Extract the summary from the response
-        summary = response.choices[0].message.content
+# def _get_customized_llm(model="gpt-4o-2024-05-13"):
+#     return OpenAI(model=model, temperature=0.0001)
 
-        # Return the summary in a JsonResponse
-        return JsonResponse({'summary': summary})
 
-    return JsonResponse({'error': 'This endpoint only supports POST requests.'}, status=405)
+# def _get_retriever(connection, table, text_key):
+#     vector_store = LanceDBVectorStore(
+#         connection=connection, 
+#         table=table, 
+#         text_key=text_key,
+#         query_type="hybrid",
+#     )
 
+#     embed_model = OpenAIEmbedding(model="text-embedding-3-small")
+
+#     index = VectorStoreIndex.from_vector_store(
+#         vector_store=vector_store,
+#         embed_model=embed_model
+#     )
+
+#     retriever = VectorIndexRetriever(
+#         index=index,
+#         similarity_top_k=3,
+#     )
+
+#     return retriever
 
 @csrf_exempt
 def generate_response(request):
     if request.method == 'POST':
-        data = json.loads(request.body)
-        
+        data = json.loads(request.body)  
         context = data.get('context', '')
         messages = data.get('messages', '')
-        model = data.get('model', 'gpt-3.5-turbo')
+        model = data.get('model', 'gpt-4o-2024-05-13')
         user_id = data.get('user_id', None)
-        obj = data.get('object', None)
 
-        # Process the dictionary object if provided
-        object_processing_result = None
-        if obj:
-            object_processing_result = process_dictionary_object(obj)
-            if "not a dictionary" in object_processing_result:
-                object_processing_result = ""
+        last_input = messages[-1]['content']
+        db = lancedb.connect(f"{LANCEDB_URI}")
+        tbl = db.open_table("Research_paper_table")
 
-        # Prepare the message payload with system prompts
+        # retriever = _get_retriever(db, tbl, "content")
+        # llm = _get_customized_llm(model=model)
+        # memory = _get_memory(f"{user_id}-conv")
+        # chat_engine = CondensePlusContextChatEngine.from_defaults(
+        #     retriever=retriever,
+        #     llm=llm,
+        #     memory=memory,
+        #     system_prompt=context,
+        # )
+
+        # response_content = chat_engine.chat(f"{last_input}")
+        # return JsonResponse({'response_content': response_content})
+
+        # simple lancedb rag
+        messages_embedding = client.embeddings.create(input = [last_input], model='text-embedding-3-small').data[0].embedding
+    
+        search_results = tbl.search(messages_embedding, vector_column_name='vector').limit(5).to_df()
+        context_from_search = "\n".join(search_results['content'])
+
         messages_payload = [
-            {"role": "system", "content": f"{context}"},
+            {"role": "system", "content": f"{context} and use the following context as reference to answer: {context_from_search}"},
             {"role": "user", "content": f"{messages}"},
         ]
 
@@ -266,10 +286,3 @@ def generate_summary(base64Frames, transcript_data, extra_info="",languagestr="e
         temperature=0,
     )
     return response.choices[0].message.content
-
-def process_dictionary_object(obj):
-    # Process the dictionary object and perform some work
-    # This is a placeholder function that you would replace with actual logic
-    if isinstance(obj, dict):
-        return "Processed dictionary object successfully."
-    return "Object is not a dictionary."

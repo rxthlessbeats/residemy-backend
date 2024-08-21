@@ -752,14 +752,21 @@ def store_research_in_db(request):
         return JsonResponse({'status': 'success'}, status=200)
     return JsonResponse({'error': 'Invalid request method'}, status=400)
 
+@csrf_exempt
 def display_research_paper_table(request):
-    db = lancedb.connect("master/lancedb/")
+    data = json.loads(request.body)
+    doc_id = data.get('doc_id')
 
     try:
-        tbl_research = db.open_table("Research_paper_table")
+        db = lancedb.connect("master/lancedb/")
+        tbl = db.open_table("Research_paper_table")
 
-        # Convert to DataFrame
-        df = tbl_research.to_pandas()
+        if doc_id:
+            print(doc_id)
+            df = tbl.search().where(f"doc_id = '{doc_id}'").limit(None).to_pandas()
+        else:
+            # If no doc_id is provided, retrieve all records
+            df = tbl.to_pandas()
 
         # Convert timestamps back to datetime
         if 'display_date' in df.columns:
