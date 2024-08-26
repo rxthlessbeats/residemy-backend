@@ -44,7 +44,6 @@ INSTALLED_APPS = [
     # Ensure 'backend' is listed after the default apps
     'backend',
     'djangocms_admin_style',
-    'django_nextjs',
     'cms',
     'corsheaders',
     'rest_framework',
@@ -188,11 +187,13 @@ CORS_ALLOWED_ORIGINS = [
     'https://learn.residemy.org',
     'https://admin.learn.residemy.org',
     'https://stage-learn.residemy.org',
+    'https://agent.residemy.org',
 ]
 
 ALLOWED_HOSTS = [
     '192.168.50.26', 
     '192.168.50.36',
+    '192.168.50.23',
     '127.0.0.1', 
     '0.0.0.0', 
     'localhost',
@@ -200,6 +201,7 @@ ALLOWED_HOSTS = [
     'learn.residemy.org', 
     'admin.learn.residemy.org', 
     'stage-learn.residemy.org',
+    'agent.residemy.org'
 ]
 
 CSRF_TRUSTED_ORIGINS = [
@@ -207,6 +209,7 @@ CSRF_TRUSTED_ORIGINS = [
     'https://learn.residemy.org', 
     'https://admin.learn.residemy.org', 
     'https://stage-learn.residemy.org',
+    'https://agent.residemy.org',
 ]
 
 # CORS_ALLOW_HEADERS = [
@@ -224,6 +227,7 @@ CSP_FRAME_ANCESTORS = [
     "'self'", 
     "https://stage-learn.residemy.org/",
     "https://learn.residemy.org/",
+    'https://agent.residemy.org',
     "http://localhost:5003/",
 ]
 
