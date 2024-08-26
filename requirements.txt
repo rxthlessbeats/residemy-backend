@@ -2,13 +2,12 @@ Django==4.2.7
 fitz==0.0.1.dev2
 langid==1.1.6
 moviepy==1.0.3
-openai==1.34.0
+openai==1.42.0
 opencv_python==4.9.0.80
 pandas==1.5.3
-Pillow==10.3.0
+Pillow==10.4.0
 pydub==0.25.1
 python-dotenv==1.0.1
 Requests==2.32.3
-textract==1.6.5
 tiktoken==0.7.0
-django-csp==3.8
+lancedb==0.12.0

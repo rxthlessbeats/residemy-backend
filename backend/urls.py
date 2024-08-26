@@ -29,7 +29,6 @@ urlpatterns = [
     # openai 
     path('api/ask_question_about_image/', openai_views.ask_question_about_image, name='ask_question_about_image'),
     path('api/get_embedding/', openai_views.get_embedding, name='get_embedding'),
-    path('api/text_summarization/', openai_views.text_summarization, name='text_summarization'),
     path('api/generate_description/', openai_views.generate_description, name='generate_description'),
     path('api/generate_response/', openai_views.generate_response, name='generate_response'),
 
