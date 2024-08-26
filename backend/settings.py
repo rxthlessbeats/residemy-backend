@@ -188,6 +188,7 @@ CORS_ALLOWED_ORIGINS = [
     'https://admin.learn.residemy.org',
     'https://stage-learn.residemy.org',
     'https://agent.residemy.org',
+    'https://www.residemy.org',
 ]
 
 ALLOWED_HOSTS = [
@@ -202,6 +203,7 @@ ALLOWED_HOSTS = [
     'admin.learn.residemy.org', 
     'stage-learn.residemy.org',
     'agent.residemy.org'
+    'www.residemy.org'
 ]
 
 CSRF_TRUSTED_ORIGINS = [
@@ -210,6 +212,7 @@ CSRF_TRUSTED_ORIGINS = [
     'https://admin.learn.residemy.org', 
     'https://stage-learn.residemy.org',
     'https://agent.residemy.org',
+    'https://www.residemy.org',
 ]
 
 # CORS_ALLOW_HEADERS = [
@@ -229,6 +232,8 @@ CSP_FRAME_ANCESTORS = [
     "https://learn.residemy.org/",
     'https://agent.residemy.org',
     "http://localhost:5003/",
+    'https://agent.residemy.org/',
+    'https://www.residemy.org/',
 ]
 
 CSP_DEFAULT_SRC = ("'self'",)
