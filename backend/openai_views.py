@@ -173,46 +173,43 @@ def generate_description(request):
             return JsonResponse({'error': f"An error occurred while generating the description: {e}"}, status=500)
     return JsonResponse({'error': 'Invalid request method'}, status=400)
 
-# from llama_index.core import VectorStoreIndex
-# from llama_index.core.chat_engine import CondensePlusContextChatEngine
-# from llama_index.core.indices.vector_store import VectorIndexRetriever
-# from llama_index.core.memory import ChatMemoryBuffer
-# from llama_index.llms.openai import OpenAI
-# from llama_index.embeddings.openai import OpenAIEmbedding
-# from llama_index.vector_stores.lancedb import LanceDBVectorStore
-
-# def _get_memory(chat_store_key="foobar-default"):
-#     return ChatMemoryBuffer.from_defaults(chat_store_key=chat_store_key)
-
-
-# def _get_customized_llm(model="gpt-4o-2024-05-13"):
-#     return OpenAI(model=model, temperature=0.0001)
-
-
-# def _get_retriever(connection, table, text_key):
-#     vector_store = LanceDBVectorStore(
-#         connection=connection, 
-#         table=table, 
-#         text_key=text_key,
-#         query_type="hybrid",
-#     )
-
-#     embed_model = OpenAIEmbedding(model="text-embedding-3-small")
-
-#     index = VectorStoreIndex.from_vector_store(
-#         vector_store=vector_store,
-#         embed_model=embed_model
-#     )
-
-#     retriever = VectorIndexRetriever(
-#         index=index,
-#         similarity_top_k=3,
-#     )
-
-#     return retriever
-
 @csrf_exempt
 def generate_response(request):
+    if request.method == 'POST':
+        data = json.loads(request.body)  
+        context = data.get('context', '')
+        messages = data.get('messages', '')
+        model = data.get('model', 'gpt-4o-2024-05-13')
+        user_id = data.get('user_id', None)
+
+        messages_payload = [
+            {"role": "system", "content": f"{context}"},
+            {"role": "user", "content": f"{messages}"},
+        ]
+
+        try:
+            # Make a request to OpenAI using the Chat Completion endpoint
+            completions = client.chat.completions.create(
+                model=model,
+                messages=messages_payload,
+                temperature=0.0
+            )
+
+            # Extract the response content and the token usage
+            response_content = completions.choices[0].message.content
+            tokens_used = completions.usage.total_tokens
+
+            ### TODO: update token used for user db###
+
+            return JsonResponse({'response_content': response_content})
+
+        except Exception as e:
+            return JsonResponse({'error': str(e)}, status=500)
+
+    return JsonResponse({'error': 'Invalid request'}, status=400)
+
+@csrf_exempt
+def generate_response_rag(request):
     if request.method == 'POST':
         data = json.loads(request.body)  
         context = data.get('context', '')
@@ -223,19 +220,6 @@ def generate_response(request):
         last_input = messages[-1]['content']
         db = lancedb.connect(f"{LANCEDB_URI}")
         tbl = db.open_table("Research_paper_table")
-
-        # retriever = _get_retriever(db, tbl, "content")
-        # llm = _get_customized_llm(model=model)
-        # memory = _get_memory(f"{user_id}-conv")
-        # chat_engine = CondensePlusContextChatEngine.from_defaults(
-        #     retriever=retriever,
-        #     llm=llm,
-        #     memory=memory,
-        #     system_prompt=context,
-        # )
-
-        # response_content = chat_engine.chat(f"{last_input}")
-        # return JsonResponse({'response_content': response_content})
 
         # simple lancedb rag
         messages_embedding = client.embeddings.create(input = [last_input], model='text-embedding-3-small').data[0].embedding
@@ -268,6 +252,34 @@ def generate_response(request):
             return JsonResponse({'error': str(e)}, status=500)
 
     return JsonResponse({'error': 'Invalid request'}, status=400)
+
+@csrf_exempt
+def json_completer(request):
+    if request.method == 'POST':
+        try:
+            data = json.loads(request.body)
+            json_data = data.get('json_data')
+
+            if not json_data:
+                return JsonResponse({"error": "json_data is required"}, status=400)
+
+            response = client.chat.completions.create(
+                model='gpt-4o',
+                response_format={ "type": "json_object" },
+                messages=[
+                    {"role": "system", "content": "You are a helpful assistant designed to output well-format JSON. Please just check my json_data and output it without any modification in content, here is your JSON format output:"},
+                    {"role": "user", "content": json_data}
+                ]
+            )
+
+            completed_response = response.choices[0].message.content
+
+            return JsonResponse({"result": completed_response}, status=200)
+        
+        except Exception as e:
+            return JsonResponse({"error": f"An error occurred: {str(e)}"}, status=500)
+
+    return JsonResponse({"error": "Only POST method is allowed"}, status=405)
 
 ###############################
 ### openai functions

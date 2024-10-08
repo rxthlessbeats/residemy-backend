@@ -4,6 +4,8 @@ from django.utils import timezone
 import os 
 from .custom_storage import UserDocumentStorage
 
+###########################MASTER DATABASE###########################
+
 class User(AbstractUser):
     username = None
     first_name = None
@@ -57,6 +59,9 @@ class Document(models.Model):
     def __str__(self):
         return self.doc_title
     
+
+###########################USEER DATABASE###########################
+    
 def user_documents_upload_uri(instance, filename):
     # user_id = instance.user.line_user_id
     return os.path.join(instance.user_id, instance.file_type, f'{instance.doc_id}.{instance.doc_type}')
@@ -89,3 +94,36 @@ class UserDocument(models.Model):
 
     def __str__(self):
         return self.doc_title
+    
+class UserChatLog(models.Model):
+    user_id = models.CharField(max_length=255)
+    doc_id = models.CharField(max_length=255, null=True, blank=True)
+    create_time = models.DateTimeField(default=timezone.now)
+    last_update_time = models.DateTimeField(null=True, blank=True)
+    dialog_session_id = models.CharField(max_length=255, unique=True)
+    dialog_text = models.TextField(null=True, blank=True)
+    dialog_meta = models.TextField(null=True, blank=True)
+
+    def __str__(self):
+        return f"ChatLog for {self.user_id} (Session: {self.dialog_session_id})"
+    
+class AgentPersona(models.Model):
+    persona_id = models.AutoField(primary_key=True)
+    persona_name = models.CharField(max_length=255, unique=True)
+    persona_data = models.TextField()
+
+    def __str__(self):
+        return self.persona_name
+    
+class UserActivityList(models.Model):
+    activity_id = models.AutoField(primary_key=True)
+    user_id = models.CharField(max_length=255)
+    check_flag = models.IntegerField(default=0)
+    priority_flag = models.IntegerField(default=10)
+    activity_desc = models.TextField()
+    create_date = models.DateTimeField(default=timezone.now)
+    finish_date = models.DateTimeField(null=True, blank=True)
+    session_id = models.CharField(max_length=255)
+
+    def __str__(self):
+        return f"Activity {self.activity_id} for User {self.user_id}"

@@ -130,6 +130,7 @@ def upload_document(request):
         doc_loc = request.POST.get('doc_loc')
         doc_uri = request.POST.get('doc_uri')
         doc_text = request.POST.get('doc_text')
+        doc_meta = request.POST.get('doc_meta')
         file_type = request.POST.get('file_type')
         display_date = request.POST.get('display_date')
         expire_date = request.POST.get('expire_date')
@@ -146,6 +147,7 @@ def upload_document(request):
             'doc_loc': doc_loc,
             'doc_uri': doc_uri,
             'doc_text': doc_text,
+            'doc_meta': doc_meta,
             'file_type': file_type,
             'display_date': display_date,
             'expire_date': expire_date,
@@ -160,6 +162,7 @@ def upload_document(request):
             document.doc_loc = doc_loc
             document.doc_uri = doc_uri
             document.doc_text = doc_text
+            document.doc_meta = doc_meta
             document.file_type = file_type
             document.display_date = display_date
             document.expire_date = expire_date
@@ -596,12 +599,6 @@ def list_user_documents(request):
         try:
             with transaction.atomic(using=db_name):
                 apply_migrations_to_user_db(connection, db_name)
-                # with connection.schema_editor() as schema_editor:
-                    # if not schema_editor.connection.introspection.table_names():
-                        # schema_editor.create_model(UserDocument)
-                    # else:
-                        # apply_migrations_to_user_db(connection, db_name)
-                        # pass
 
                 # replace the name
                 if file_type == 'documents': fileType = 'Document'
@@ -661,9 +658,6 @@ def list_user_documents(request):
                         })
 
             return doc_list
-        
-            with connection.cursor() as cursor:
-                cursor.execute('PRAGMA foreign_keys = ON;')
 
         except Exception as e:
             return JsonResponse({'status': 'error', 'error': e}, status=500)
@@ -698,6 +692,16 @@ class ResearchPaper(LanceModel):
 
         display_date: int
         expire_date: int
+
+class KnowledgeObject(LanceModel):
+    vector: Vector(1536) # type: ignore
+    content: str
+    doc_id: str
+    user_id: str
+    concept_id: int
+    element: str
+    display_date: int
+    expire_date: int
 
 def fetch_embedding(row):
     text = row['content']
@@ -739,6 +743,40 @@ def store_research_in_db(request):
         # Convert JSON data to DataFrame
         df = json_to_dataframe(json_data, doc_id=doc_id, user_id=user_id, file_type=file_type)
         tbl_research = vdb.create_table("Research_paper_table", schema=ResearchPaper.to_arrow_schema(), exist_ok=True)
+
+        with ThreadPoolExecutor(max_workers=os.cpu_count()) as executor:
+            futures = [executor.submit(fetch_embedding, row) for _, row in df.iterrows()]
+            records = [future.result() for future in as_completed(futures)]
+
+        records_df = pd.DataFrame(records)
+        records_df['display_date'] = display_date
+        records_df['expire_date'] = expire_date
+        tbl_research.add(records_df)
+
+        return JsonResponse({'status': 'success'}, status=200)
+    return JsonResponse({'error': 'Invalid request method'}, status=400)
+
+@csrf_exempt
+def store_knowledge_in_db(request):
+    if request.method == 'POST':
+        data = json.loads(request.body)
+        json_data = data.get('doc_meta')
+        user_id = data.get('user_id')
+        doc_id = data.get('doc_id')
+        file_type = data.get('file_type')
+        user_doc = data.get('user_doc', False)
+        display_date = datetime_to_timestamp(datetime.fromisoformat(data.get('display_date')))
+        expire_date = datetime_to_timestamp(datetime.fromisoformat(data.get('expire_date')))
+
+        # Connect to LanceDB
+        if user_doc == False:
+            vdb = lancedb.connect(LANCEDB_URI)
+        else:
+            vdb = lancedb.connect(f'userdbs/{user_id}/lancedb')
+
+        # Convert JSON data to DataFrame
+        df = json_to_dataframe(json_data, doc_id=doc_id, user_id=user_id, file_type=file_type)
+        tbl_research = vdb.create_table("KnowledgeObject_table", schema=KnowledgeObject.to_arrow_schema(), exist_ok=True)
 
         with ThreadPoolExecutor(max_workers=os.cpu_count()) as executor:
             futures = [executor.submit(fetch_embedding, row) for _, row in df.iterrows()]

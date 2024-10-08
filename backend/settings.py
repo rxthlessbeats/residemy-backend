@@ -224,13 +224,13 @@ CSRF_TRUSTED_ORIGINS = [
 # ]
 
 # X_FRAME_OPTIONS = 'ALLOW-FROM https://admin.learn.residemy.org/'
+X_FRAME_OPTIONS = 'ALLOWALL'
 
 
 CSP_FRAME_ANCESTORS = [
     "'self'", 
     "https://stage-learn.residemy.org/",
     "https://learn.residemy.org/",
-    'https://agent.residemy.org',
     "http://localhost:5003/",
     'https://agent.residemy.org/',
     'https://www.residemy.org/',
